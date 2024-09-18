@@ -5,7 +5,8 @@ import torch.nn.functional as F
 
 
 class Transformer(nn.Module):
-    def __init__(self, src_vocab_size, tgt_vocab_size, d_model, n_heads, num_encoder_layers, num_decoder_layers, 
+    def __init__(self, src_vocab_size, tgt_vocab_size, d_model, n_heads, 
+                 num_encoder_layers, num_decoder_layers, 
                  dim_feedforward, max_len=5000, dropout=0.1):
         super(Transformer, self).__init__()
         
@@ -20,7 +21,8 @@ class Transformer(nn.Module):
         
         # Softmax is typically applied later during inference or training (like using cross-entropy loss)
     
-    def forward(self, src, tgt, src_padding_mask=None, tgt_padding_mask=None, tgt_look_ahead_mask=None):
+    def forward(self, src, tgt, src_padding_mask=None, tgt_padding_mask=None, 
+                tgt_look_ahead_mask=None):
         # Encode the source sequence
         encoder_output = self.encoder(src, src_padding_mask)
         
@@ -262,15 +264,15 @@ class TransformerDecoder(nn.Module):
 
 
 def create_padding_mask(input_tokens, pad_token=0):
-    # input_tokens: shape (batch_size, seq_len)
+    """input_tokens: shape (batch_size, seq_len)"""
     # mask.shape() = (batch_size, 1, 1, seq_len)
     mask = (input_tokens != pad_token).unsqueeze(1).unsqueeze(2)  
     return mask
 
 
 def create_look_ahead_mask(seq_len):
-    # Create a mask where each position i can only attend to positions <= i
-    # Shape (1, 1, seq_len, seq_len)
+    """Create a mask where each position i can only attend to positions <= i"""
+    # mase.shape() = (1, 1, seq_len, seq_len)
     mask = torch.tril(torch.ones((seq_len, seq_len))).unsqueeze(0).unsqueeze(0) 
     return mask
 
@@ -291,9 +293,17 @@ model = Transformer(src_vocab_size, tgt_vocab_size, d_model, n_heads,
                     num_encoder_layers, num_decoder_layers, 
                     dim_feedforward, max_len, dropout)
 
+
 # Example input (source and target sequences)
 src = torch.randint(0, src_vocab_size, (32, 50))  # Source: (batch_size, src_seq_len)
 tgt = torch.randint(0, tgt_vocab_size, (32, 50))  # Target: (batch_size, tgt_seq_len)
+
+out = model.encoder(src)
+
+out.shape
+model.decoder(tgt, out).shape
+
+src.shape
 
 # Padding masks (for both source and target)
 src_padding_mask = create_padding_mask(src)
