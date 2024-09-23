@@ -11,10 +11,16 @@ class Transformer(nn.Module):
         super(Transformer, self).__init__()
         
         # Encoder
-        self.encoder = TransformerEncoder(src_vocab_size, d_model, n_heads, num_encoder_layers, dim_feedforward, max_len, dropout)
+        self.encoder = TransformerEncoder(
+            src_vocab_size, d_model, n_heads, num_encoder_layers, 
+            dim_feedforward, max_len, dropout
+        )
         
         # Decoder
-        self.decoder = TransformerDecoder(tgt_vocab_size, d_model, n_heads, num_decoder_layers, dim_feedforward, max_len, dropout)
+        self.decoder = TransformerDecoder(
+            tgt_vocab_size, d_model, n_heads, num_decoder_layers, 
+            dim_feedforward, max_len, dropout
+        )
         
         # Final linear layer that projects decoder's output to the target vocabulary size
         self.fc_out = nn.Linear(d_model, tgt_vocab_size)
@@ -27,7 +33,9 @@ class Transformer(nn.Module):
         encoder_output = self.encoder(src, src_padding_mask)
         
         # Decode the target sequence with attention to the encoder output
-        decoder_output = self.decoder(tgt, encoder_output, tgt_look_ahead_mask, tgt_padding_mask)
+        decoder_output = self.decoder(
+            tgt, encoder_output, tgt_look_ahead_mask, tgt_padding_mask
+        )
         
         # Project the decoder's output to the target vocabulary space
         output = self.fc_out(decoder_output)  # Shape: (batch_size, tgt_seq_len, tgt_vocab_size)
@@ -53,7 +61,9 @@ class Transformer(nn.Module):
 
         # Step 2: Initialize the target sequence with the <SOS> token
         batch_size = src.size(0)
-        tgt_tokens = torch.full((batch_size, 1), sos_token, dtype=torch.long, device=src.device)  # Start with <SOS> token
+        tgt_tokens = torch.full(
+            (batch_size, 1), sos_token, dtype=torch.long, device=src.device
+        )  # Start with <SOS> token
 
         # Step 3: Iteratively generate tokens
         for i in range(max_len):
@@ -61,7 +71,9 @@ class Transformer(nn.Module):
             tgt_look_ahead_mask = create_look_ahead_mask(tgt_tokens.size(1))
 
             # Step 5: Decode using the current target sequence
-            decoder_output = self.decoder(tgt_tokens, encoder_output, tgt_look_ahead_mask)
+            decoder_output = self.decoder(
+                tgt_tokens, encoder_output, tgt_look_ahead_mask
+            )
 
             # Step 6: Apply final linear layer to get predictions
             logits = self.fc_out(decoder_output)  # (batch_size, tgt_seq_len, tgt_vocab_size)
