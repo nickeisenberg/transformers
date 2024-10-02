@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 
 class Transformer(nn.Module):
-    def __init__(self, src_vocab_size, tgt_vocab_size, d_model, n_heads, 
+    def __init__(self, src_vocab_size, tgt_vocab_size, d_model, n_heads,
                  num_encoder_layers, num_decoder_layers, 
                  dim_feedforward, max_len=5000, dropout=0.1):
         super(Transformer, self).__init__()
@@ -56,6 +56,9 @@ class Transformer(nn.Module):
         Returns:
             Generated target sequence of shape (batch_size, generated_seq_len).
         """
+    
+        device = src.device
+
         # Step 1: Encode the source sequence
         encoder_output = self.encoder(src, src_padding_mask)
 
@@ -68,7 +71,9 @@ class Transformer(nn.Module):
         # Step 3: Iteratively generate tokens
         for i in range(max_len):
             # Step 4: Create look-ahead mask for the target sequence
-            tgt_look_ahead_mask = create_look_ahead_mask(tgt_tokens.size(1))
+            tgt_look_ahead_mask = create_look_ahead_mask(
+                tgt_tokens.size(1), device
+            )
 
             # Step 5: Decode using the current target sequence
             decoder_output = self.decoder(
@@ -95,7 +100,10 @@ class Transformer(nn.Module):
 class SelfAttention(nn.Module):
     def __init__(self, d_model, n_heads):
         super(SelfAttention, self).__init__()
-        assert d_model % n_heads == 0, "d_model must be divisible by n_heads"
+        
+        if not d_model % n_heads == 0:
+            raise Exception("d_model must be divisible by n_heads")
+
         self.d_model = d_model
         self.n_heads = n_heads
         self.d_k = d_model // n_heads  # Dimension per head (same for Q, K, and V)
@@ -327,49 +335,46 @@ def create_padding_mask(input_tokens, pad_token=0):
     return mask
 
 
-def create_look_ahead_mask(seq_len):
+def create_look_ahead_mask(seq_len, device="cpu"):
     """Create a mask where each position i can only attend to positions <= i"""
     # mase.shape() = (1, 1, seq_len, seq_len)
     mask = torch.tril(torch.ones((seq_len, seq_len))).unsqueeze(0).unsqueeze(0) 
-    return mask
+    return mask.to(device)
 
 
-# Hyperparameters
+if __name__ == "__main__":
+    pass
+
+# Define the parameters
 src_vocab_size = 10000  # Source vocabulary size
 tgt_vocab_size = 10000  # Target vocabulary size
-d_model = 512  # Embedding size
-n_heads = 8  # Number of attention heads
-num_encoder_layers = 6  # Number of encoder layers
-num_decoder_layers = 6  # Number of decoder layers
-dim_feedforward = 2048  # Feedforward network size
-max_len = 500  # Maximum sequence length
-dropout = 0.1  # Dropout rate
+d_model = 512            # Embedding size
+n_heads = 8              # Number of attention heads
+num_encoder_layers = 6   # Number of encoder layers
+num_decoder_layers = 6   # Number of decoder layers
+dim_feedforward = 2048    # Feedforward network size
+max_len = 500            # Maximum sequence length
+dropout = 0.1            # Dropout rate
 
 # Create the Transformer model
 model = Transformer(src_vocab_size, tgt_vocab_size, d_model, n_heads, 
                     num_encoder_layers, num_decoder_layers, 
                     dim_feedforward, max_len, dropout)
 
+# Create dummy input and target sequences
+batch_size = 32
+src = torch.randint(0, src_vocab_size, (batch_size, 20))
+tgt = torch.randint(0, tgt_vocab_size, (batch_size, 20))
 
-# Example input (source and target sequences)
-src = torch.randint(0, src_vocab_size, (32, 50))  # Source: (batch_size, src_seq_len)
-tgt = torch.randint(0, tgt_vocab_size, (32, 50))  # Target: (batch_size, tgt_seq_len)
+# Create padding masks (assuming no padding here; using all ones)
+src_padding_mask = create_padding_mask(src)  
+tgt_padding_mask = create_padding_mask(tgt)  
 
-out = model.encoder(src)
-
-out.shape
-model.decoder(tgt, out).shape
-
-src.shape
-
-# Padding masks (for both source and target)
-src_padding_mask = create_padding_mask(src)
-tgt_padding_mask = create_padding_mask(tgt)
-
-# Look-ahead mask for the target sequence
+# Create look-ahead mask for the target sequence
 tgt_look_ahead_mask = create_look_ahead_mask(tgt.size(1))
 
 # Forward pass through the Transformer
 output = model(src, tgt, src_padding_mask, tgt_padding_mask, tgt_look_ahead_mask)
 
-print(output.shape)  # Output shape: (batch_size, tgt_seq_len, tgt_vocab_size)
+# Print output shape
+print("Output shape:", output.shape)  # Expected shape: (batch_size, tgt_seq_len, tgt_vocab_size)
