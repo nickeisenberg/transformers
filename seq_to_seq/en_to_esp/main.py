@@ -82,7 +82,16 @@ model = Transformer(
     d_model=d_model, n_heads=n_heads, num_encoder_layers=num_encoder_layers, 
     num_decoder_layers=num_decoder_layers, dim_feedforward=dim_feedforward, 
     max_len=max_len_tgt, dropout=dropout
-).to(device)
+)
 
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 criterion = torch.nn.CrossEntropyLoss()
+
+for batch in loader:
+    inps, mask, targ = batch["input_ids"], batch["attention_mask"], batch["labels"]
+    model(inps, targ, mask)
+
+
+
+
+
