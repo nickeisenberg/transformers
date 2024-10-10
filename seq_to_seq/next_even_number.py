@@ -85,7 +85,7 @@ for epoch in range(num_epochs):
     tgt_look_ahead_mask = create_look_ahead_mask(tgt_input.size(1), device)
     
     # Forward pass
-    output = model(src, tgt_input, src_padding_mask, tgt_padding_mask, tgt_look_ahead_mask)
+    output = model(src, tgt_input, src_padding_mask, tgt_look_ahead_mask)
     
     # Reshape output and target for cross-entropy loss
     output = output.reshape(-1, tgt_vocab_size)
@@ -104,16 +104,18 @@ for epoch in range(num_epochs):
 
 
 # inference_example
-src_seq = [6, 8, 10, 1, 14]  # Example input sequence
-desired_seq = [8, 10, 12, 14, 16]  # Example input sequence
+src_seq = [ 
+    [6, 8, 10, 12, 14],
+]
+desired_seq = [[x + 2 for x in xx] for xx in src_seq]
 
 model.eval()
-src_tensor = torch.tensor([src_seq], dtype=torch.long).to(device)
+src_tensor = torch.tensor(src_seq, dtype=torch.long).to(device)
 generated_seq = model.inference(
     src_tensor, max_len=max_len_tgt, sos_token=1, eos_token=3
 )
 generated_seq = generated_seq.cpu().numpy()
 
 print(f"Input sequence: {src_seq}")
-print(f"Desired sequence: {desired_seq}")
 print(f"Generated sequence: {generated_seq}")
+print(f"Desired sequence: {desired_seq}")
