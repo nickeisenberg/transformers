@@ -167,12 +167,13 @@ class VisionTransformer(nn.Module):
         return x
 
 
-# Create a dummy input tensor (batch_size, channels, height, width)
-x = torch.randn(8, 144, 224, 224)
-
-# Instantiate the Vision Transformer
-vit = VisionTransformer(in_chans=144)
-
-# Get the classification logits
-logits = vit(x)
-print(logits.shape)  # Should output: (batch_size, num_classes)
+if __name__ == "__main__":
+    # Create a dummy input tensor (batch_size, channels, height, width)
+    x = torch.randn(8, 144, 224, 224)
+    
+    # Instantiate the Vision Transformer
+    vit = VisionTransformer(in_chans=144)
+    
+    # Get the classification logits
+    logits = vit(x)
+    print(logits.shape)  # Should output: (batch_size, num_classes)

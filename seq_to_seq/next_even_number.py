@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import random
-from transformer import (
+from src.tfrmrs.transformer import (
     Transformer, 
     create_padding_mask, 
     create_look_ahead_mask
