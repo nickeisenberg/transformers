@@ -100,62 +100,78 @@ class Transformer(nn.Module):
 
         return tgt_tokens
 
- 
+
 class SelfAttention(nn.Module):
-    def __init__(self, d_model, n_heads):
+    def __init__(self, embed_dim, num_heads, dropout=0.1):
         super().__init__()
+
+        if not embed_dim % num_heads == 0:
+            raise Exception("Embedding dimension must be divisible by the number of heads")
+
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads  # Dimension of each attention head
         
-        if not d_model % n_heads == 0:
-            raise Exception("d_model must be divisible by n_heads")
+        # Linear layers for query, key, and value projections
+        self.q_proj = nn.Linear(embed_dim, embed_dim)
+        self.k_proj = nn.Linear(embed_dim, embed_dim)
+        self.v_proj = nn.Linear(embed_dim, embed_dim)
+        
+        # Final linear layer to combine all the heads' outputs
+        self.out_proj = nn.Linear(embed_dim, embed_dim)
+        
+        # Dropout for regularization
+        self.dropout = nn.Dropout(dropout)
+        
+    def scaled_dot_product_attention(self, query, key, value, mask=None):
+        # Compute the attention scores
+        attn_scores = torch.matmul(query, key.transpose(-2, -1))  # (batch_size, num_heads, seq_len, seq_len)
+        attn_scores /= torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float32))  # Scale by √d_k
 
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.d_k = d_model // n_heads  # Dimension per head (same for Q, K, and V)
+        # Apply the padding mask if provided
+        if mask is not None:
+            attn_scores = attn_scores.masked_fill(mask == 0, float('-inf'))
 
-        # Linear layers for projecting Q, K, V
-        self.query = nn.Linear(d_model, d_model)
-        self.key = nn.Linear(d_model, d_model)
-        self.value = nn.Linear(d_model, d_model)
+        # Apply softmax to get attention weights
+        attn_weights = F.softmax(attn_scores, dim=-1)
+        
+        # Apply dropout to the attention weights
+        attn_weights = self.dropout(attn_weights)
+        
+        # Compute the weighted sum of the values
+        attn_output = torch.matmul(attn_weights, value)
+        
+        return attn_output, attn_weights
 
-        # Output linear layer
-        self.out = nn.Linear(d_model, d_model)
+    def forward(self, query, key, value, mask=None):
+        # batch_size = query.size(0)
+        batch_size, seq_len_q, _ = query.size()
+        seq_len_k = key.size(1)  # Sequence length for K (which could differ from Q)
 
-    def forward(self, Q, K, V, padding_mask=None):
-        batch_size, seq_len_q, d_model = Q.size()
-        seq_len_k = K.size(1)  # Sequence length for K (which could differ from Q)
+        # Linear projection to compute Q, K, and V
+        Q = self.q_proj(query)  # (batch_size, seq_len, embed_dim)
+        K = self.k_proj(key)    # (batch_size, seq_len, embed_dim)
+        V = self.v_proj(value)  # (batch_size, seq_len, embed_dim)
 
-        # Step 1: Project Q, K, V
-        Q = self.query(Q)  # (batch_size, seq_len_q, d_model)
-        K = self.key(K)    # (batch_size, seq_len_k, d_model)
-        V = self.value(V)  # (batch_size, seq_len_k, d_model)
-
-        # Step 2: Reshape into (batch_size, n_heads, seq_len, d_k)
-        Q = Q.view(batch_size, seq_len_q, self.n_heads, self.d_k).transpose(1, 2)
-        K = K.view(batch_size, seq_len_k, self.n_heads, self.d_k).transpose(1, 2)
-        V = V.view(batch_size, seq_len_k, self.n_heads, self.d_k).transpose(1, 2)
-
-        # Step 3: Scaled dot-product attention
-        attn_weights = torch.matmul(Q, K.transpose(-2, -1))
-        attn_weights /= torch.sqrt(torch.tensor(self.d_k, dtype=torch.float32))
-
-        # Step 4: Apply the padding mask if provided
-        if padding_mask is not None:
-            attn_weights = attn_weights.masked_fill(
-                padding_mask == 0, float('-inf')
-            )
-
-        # Step 5: Apply softmax to get attention weights
-        attn_weights = F.softmax(attn_weights, dim=-1)
-
-        # Step 6: Weighted sum of the values
-        attention_output = torch.matmul(attn_weights, V)
-
-        # Step 7: Concatenate the heads and pass through output linear layer
-        attention_output = attention_output.transpose(1, 2).contiguous().view(
-            batch_size, seq_len_q, d_model
+        # Reshape for multi-head attention (split into multiple heads)
+        # New shape: (batch_size, num_heads, seq_len, head_dim)
+        Q = Q.view(batch_size, seq_len_q, self.num_heads, self.head_dim).transpose(1, 2)
+        K = K.view(batch_size, seq_len_k, self.num_heads, self.head_dim).transpose(1, 2)
+        V = V.view(batch_size, seq_len_q, self.num_heads, self.head_dim).transpose(1, 2)
+        
+        # Perform scaled dot-product attention for each head, with optional padding mask
+        attn_output, attn_weights = self.scaled_dot_product_attention(Q, K, V, mask)
+        
+        # Concatenate the attention outputs from all heads
+        # New shape: (batch_size, seq_len, embed_dim)
+        attn_output = attn_output.transpose(1, 2).contiguous().view(
+            batch_size, seq_len_q, self.embed_dim
         )
-
-        return self.out(attention_output)
+        
+        # Apply the final linear layer to combine the outputs from all heads
+        output = self.out_proj(attn_output)
+        
+        return output, attn_weights
 
 
 class PositionalEncoding(nn.Module):
@@ -207,7 +223,7 @@ class TransformerEncoderBlock(nn.Module):
     def forward(self, x, padding_mask=None):
         # Step 1: Self-attention layer with residual connection and layer normalization
         # attn_output.shape() = (batch_size, seq_len, d_model)
-        attn_output = self.self_attention(x, x, x, padding_mask)  
+        attn_output, _ = self.self_attention(x, x, x, padding_mask)  
         x = self.norm1(x + self.dropout(attn_output))
 
         # Step 2: Feed-forward network with residual connection and layer normalization
@@ -278,11 +294,11 @@ class TransformerDecoderBlock(nn.Module):
 
     def forward(self, x, encoder_output, look_ahead_mask=None, padding_mask=None):
         # Step 1: Masked self-attention with residual connection and layer normalization
-        attn_output = self.self_attention(x, x, x, look_ahead_mask)  
+        attn_output, _ = self.self_attention(x, x, x, look_ahead_mask)  
         x = self.norm1(x + self.dropout(attn_output))
 
         # Step 2: Cross-attention with residual connection and layer normalization
-        cross_attn_output = self.cross_attention(
+        cross_attn_output, _ = self.cross_attention(
             x, encoder_output, encoder_output, padding_mask
         )
         x = self.norm2(x + self.dropout(cross_attn_output))
@@ -379,7 +395,11 @@ if __name__ == "__main__":
     tgt_look_ahead_mask = create_look_ahead_mask(tgt.size(1))
     
     # Forward pass through the Transformer
-    output = model(src, tgt, src_padding_mask, tgt_padding_mask, tgt_look_ahead_mask)
+    #output = model(src, tgt, src_padding_mask, tgt_look_ahead_mask)
+    output = model(src, tgt)
     
     # Print output shape
     print("Output shape:", output.shape)  # Expected shape: (batch_size, tgt_seq_len, tgt_vocab_size)
+
+
+src

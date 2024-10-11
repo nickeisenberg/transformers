@@ -29,7 +29,7 @@ class PositionalEmbedding(nn.Module):
         return x + self.pos_embed
 
 
-class MultiheadAttention(nn.Module):
+class SelfAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, dropout=0.1):
         super().__init__()
 
@@ -72,7 +72,9 @@ class MultiheadAttention(nn.Module):
         return attn_output, attn_weights
 
     def forward(self, query, key, value, mask=None):
-        batch_size = query.size(0)
+        # batch_size = query.size(0)
+        batch_size, seq_len_q, _ = query.size()
+        seq_len_k = key.size(1)  # Sequence length for K (which could differ from Q)
 
         # Linear projection to compute Q, K, and V
         Q = self.q_proj(query)  # (batch_size, seq_len, embed_dim)
@@ -81,16 +83,18 @@ class MultiheadAttention(nn.Module):
 
         # Reshape for multi-head attention (split into multiple heads)
         # New shape: (batch_size, num_heads, seq_len, head_dim)
-        Q = Q.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-        K = K.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-        V = V.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        Q = Q.view(batch_size, seq_len_q, self.num_heads, self.head_dim).transpose(1, 2)
+        K = K.view(batch_size, seq_len_k, self.num_heads, self.head_dim).transpose(1, 2)
+        V = V.view(batch_size, seq_len_q, self.num_heads, self.head_dim).transpose(1, 2)
         
         # Perform scaled dot-product attention for each head, with optional padding mask
         attn_output, attn_weights = self.scaled_dot_product_attention(Q, K, V, mask)
         
         # Concatenate the attention outputs from all heads
         # New shape: (batch_size, seq_len, embed_dim)
-        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, -1, self.embed_dim)
+        attn_output = attn_output.transpose(1, 2).contiguous().view(
+            batch_size, seq_len_q, self.embed_dim
+        )
         
         # Apply the final linear layer to combine the outputs from all heads
         output = self.out_proj(attn_output)
@@ -102,7 +106,7 @@ class TransformerEncoder(nn.Module):
     def __init__(self, embed_dim, num_heads, mlp_ratio=4.0, dropout=0.1):
         super().__init__()
         self.norm1 = nn.LayerNorm(embed_dim)
-        self.attn = MultiheadAttention(embed_dim, num_heads, dropout=dropout)
+        self.attn = SelfAttention(embed_dim, num_heads, dropout=dropout)
         self.norm2 = nn.LayerNorm(embed_dim)
         
         hidden_dim = int(embed_dim * mlp_ratio)

@@ -64,15 +64,15 @@ dataset = TranslationDataset(path_to_df, src_tokenizer, tgt_tokenizer)
 loader = DataLoader(dataset, 32, shuffle=True)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-src_vocab_size = src_tokenizer.vocab_size
-tgt_vocab_size = tgt_tokenizer.vocab_size
+src_vocab_size = src_tokenizer.vocab_size + 1
+tgt_vocab_size = tgt_tokenizer.vocab_size + 1
 d_model = 64
 n_heads = 8
 num_encoder_layers = 3
 num_decoder_layers = 3
 dim_feedforward = 256
-max_len_src = 64
-max_len_tgt = 64 # Account for <SOS> and <EOS>
+max_len_src = 500
+max_len_tgt = 500 # Account for <SOS> and <EOS>
 dropout = 0.1
 sos_token = 65001  # Define <SOS> token ID
 eos_token = 65000  # Define <EOS> token ID
@@ -89,9 +89,5 @@ criterion = torch.nn.CrossEntropyLoss()
 
 for batch in loader:
     inps, mask, targ = batch["input_ids"], batch["attention_mask"], batch["labels"]
-    model(inps, targ, mask)
-
-
-
-
-
+    model(inps, targ)
+    break
