@@ -157,7 +157,7 @@ class SelfAttention(nn.Module):
         # New shape: (batch_size, num_heads, seq_len, head_dim)
         Q = Q.view(batch_size, seq_len_q, self.num_heads, self.head_dim).transpose(1, 2)
         K = K.view(batch_size, seq_len_k, self.num_heads, self.head_dim).transpose(1, 2)
-        V = V.view(batch_size, seq_len_q, self.num_heads, self.head_dim).transpose(1, 2)
+        V = V.view(batch_size, seq_len_k, self.num_heads, self.head_dim).transpose(1, 2)
         
         # Perform scaled dot-product attention for each head, with optional padding mask
         attn_output, attn_weights = self.scaled_dot_product_attention(Q, K, V, mask)
@@ -388,18 +388,13 @@ if __name__ == "__main__":
     
     
     # Create padding masks (assuming no padding here; using all ones)
-    src_padding_mask = create_padding_mask(src)  
-    tgt_padding_mask = create_padding_mask(tgt)  
-    
     # Create look-ahead mask for the target sequence
+    src_padding_mask = create_padding_mask(src)  
     tgt_look_ahead_mask = create_look_ahead_mask(tgt.size(1))
     
     # Forward pass through the Transformer
-    #output = model(src, tgt, src_padding_mask, tgt_look_ahead_mask)
-    output = model(src, tgt)
+    output = model(src, tgt, src_padding_mask, tgt_look_ahead_mask)
     
     # Print output shape
     print("Output shape:", output.shape)  # Expected shape: (batch_size, tgt_seq_len, tgt_vocab_size)
 
-
-src

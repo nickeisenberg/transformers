@@ -3,7 +3,10 @@ from transformers import MarianTokenizer
 import os
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
-from src.tfrmrs.transformer import Transformer
+from src.tfrmrs.transformer import (
+    Transformer, 
+    create_look_ahead_mask,
+)
 
 
 def get_tokenizers():
@@ -57,7 +60,6 @@ class TranslationDataset(Dataset):
             "labels": tgt_encoded["input_ids"].squeeze()  # Spanish tokens (target)
         }
 
-
 src_tokenizer, tgt_tokenizer = get_tokenizers()
 path_to_df = os.path.expanduser("~/datasets/en_to_esp/data.csv")
 dataset = TranslationDataset(path_to_df, src_tokenizer, tgt_tokenizer)
@@ -88,6 +90,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 criterion = torch.nn.CrossEntropyLoss()
 
 for batch in loader:
-    inps, mask, targ = batch["input_ids"], batch["attention_mask"], batch["labels"]
-    model(inps, targ)
+    src, mask, tgt = batch["input_ids"], batch["attention_mask"], batch["labels"]
+    tgt_lookahead_mask = create_look_ahead_mask(tgt.size(1)) 
+    output = model(src, tgt, mask.unsqueeze(1).unsqueeze(2), tgt_lookahead_mask)
     break

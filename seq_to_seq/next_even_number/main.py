@@ -81,8 +81,10 @@ for epoch in range(num_epochs):
 
     # Create masks
     src_padding_mask = create_padding_mask(src)
-    tgt_padding_mask = create_padding_mask(tgt_input)
     tgt_look_ahead_mask = create_look_ahead_mask(tgt_input.size(1), device)
+
+    src_padding_mask.shape
+    tgt_look_ahead_mask.shape
     
     # Forward pass
     output = model(src, tgt_input, src_padding_mask, tgt_look_ahead_mask)
@@ -101,7 +103,7 @@ for epoch in range(num_epochs):
 
     if (epoch + 1) % 20 == 0:
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
-
+    break
 
 # inference_example
 src_seq = [ 
