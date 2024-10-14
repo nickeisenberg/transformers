@@ -155,16 +155,18 @@ class SelfAttention(nn.Module):
 
         # Reshape for multi-head attention (split into multiple heads)
         # New shape: (batch_size, num_heads, seq_len, head_dim)
-        Q = Q.view(batch_size, seq_len_q, self.num_heads, self.head_dim).transpose(1, 2)
-        K = K.view(batch_size, seq_len_k, self.num_heads, self.head_dim).transpose(1, 2)
-        V = V.view(batch_size, seq_len_k, self.num_heads, self.head_dim).transpose(1, 2)
+        print(0000)
+        Q = Q.view(batch_size, seq_len_q, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+        K = K.view(batch_size, seq_len_k, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+        V = V.view(batch_size, seq_len_k, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
         
         # Perform scaled dot-product attention for each head, with optional padding mask
         attn_output, attn_weights = self.scaled_dot_product_attention(Q, K, V, mask)
         
         # Concatenate the attention outputs from all heads
         # New shape: (batch_size, seq_len, embed_dim)
-        attn_output = attn_output.transpose(1, 2).contiguous().view(
+        print(1111)
+        attn_output = attn_output.transpose(1, 2).reshape(
             batch_size, seq_len_q, self.embed_dim
         )
         

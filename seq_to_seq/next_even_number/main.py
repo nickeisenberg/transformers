@@ -40,6 +40,39 @@ def create_batch(batch_size=32, sos_token=-5, eos_token=-1):
     return src_batch, tgt_batch
 
 
+def train_on_epoch(model, criterion, optimizer, epoch):
+    _ = model.train()
+    
+    # Generate a batch of data
+    src, tgt = create_batch(batch_size=32, sos_token=sos_token, eos_token=eos_token)
+    
+    # Create tgt_input and tgt_output
+    tgt_input = tgt[:, :-1]  # Remove <EOS> token
+    tgt_output = tgt[:, 1:]  # Shift by one, so we predict <EOS>
+
+    # Create masks
+    src_padding_mask = create_padding_mask(src)
+    tgt_look_ahead_mask = create_look_ahead_mask(tgt_input.size(1), device)
+    
+    # Forward pass
+    output = model(src, tgt_input, src_padding_mask, tgt_look_ahead_mask)
+    
+    # Reshape output and target for cross-entropy loss
+    output = output.reshape(-1, tgt_vocab_size)
+    tgt_output = tgt_output.reshape(-1)
+
+    # Compute loss
+    loss = criterion(output, tgt_output)
+
+    # Backpropagation and optimization
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    if (epoch + 1) % 20 == 0:
+        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
+
+
 # Hyperparameters
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 src_vocab_size = 200  # Let's assume the even numbers are between 2 and 50
@@ -70,40 +103,7 @@ criterion = nn.CrossEntropyLoss()
 # Training loop
 num_epochs = 1000
 for epoch in range(num_epochs):
-    _ = model.train()
-    
-    # Generate a batch of data
-    src, tgt = create_batch(batch_size=32, sos_token=sos_token, eos_token=eos_token)
-    
-    # Create tgt_input and tgt_output
-    tgt_input = tgt[:, :-1]  # Remove <EOS> token
-    tgt_output = tgt[:, 1:]  # Shift by one, so we predict <EOS>
-
-    # Create masks
-    src_padding_mask = create_padding_mask(src)
-    tgt_look_ahead_mask = create_look_ahead_mask(tgt_input.size(1), device)
-
-    src_padding_mask.shape
-    tgt_look_ahead_mask.shape
-    
-    # Forward pass
-    output = model(src, tgt_input, src_padding_mask, tgt_look_ahead_mask)
-    
-    # Reshape output and target for cross-entropy loss
-    output = output.reshape(-1, tgt_vocab_size)
-    tgt_output = tgt_output.reshape(-1)
-
-    # Compute loss
-    loss = criterion(output, tgt_output)
-
-    # Backpropagation and optimization
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-    if (epoch + 1) % 20 == 0:
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
-    break
+    train_on_epoch(model, criterion, optimizer, epoch)
 
 # inference_example
 src_seq = [ 

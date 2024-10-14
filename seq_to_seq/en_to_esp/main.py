@@ -60,37 +60,71 @@ class TranslationDataset(Dataset):
             "labels": tgt_encoded["input_ids"].squeeze()  # Spanish tokens (target)
         }
 
-src_tokenizer, tgt_tokenizer = get_tokenizers()
-path_to_df = os.path.expanduser("~/datasets/en_to_esp/data.csv")
-dataset = TranslationDataset(path_to_df, src_tokenizer, tgt_tokenizer)
-loader = DataLoader(dataset, 32, shuffle=True)
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+src_tokenizer, tgt_tokenizer = get_tokenizers()
+
 src_vocab_size = src_tokenizer.vocab_size + 1
 tgt_vocab_size = tgt_tokenizer.vocab_size + 1
-d_model = 64
-n_heads = 8
-num_encoder_layers = 3
-num_decoder_layers = 3
-dim_feedforward = 256
-max_len_src = 500
-max_len_tgt = 500 # Account for <SOS> and <EOS>
-dropout = 0.1
-sos_token = 65001  # Define <SOS> token ID
-eos_token = 65000  # Define <EOS> token ID
 
-model = Transformer(
-    src_vocab_size=src_vocab_size, tgt_vocab_size=tgt_vocab_size, 
-    d_model=d_model, n_heads=n_heads, num_encoder_layers=num_encoder_layers, 
-    num_decoder_layers=num_decoder_layers, dim_feedforward=dim_feedforward, 
-    max_len=max_len_tgt, dropout=dropout
+path_to_df = os.path.expanduser("~/datasets/en_to_esp/data.csv")
+dataset = TranslationDataset(path_to_df=path_to_df, 
+                             src_tokenizer=src_tokenizer, 
+                             tgt_tokenizer=tgt_tokenizer, 
+                             max_length=64)
+
+dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+
+transformer_model = Transformer(
+    src_vocab_size=src_vocab_size, 
+    tgt_vocab_size=tgt_vocab_size, 
+    d_model=512, 
+    n_heads=8, 
+    num_encoder_layers=6, 
+    num_decoder_layers=6, 
+    dim_feedforward=2048, 
+    max_len=64, 
+    dropout=0.1
 )
 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-criterion = torch.nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(transformer_model.parameters(), lr=0.0001)
+loss_fn = torch.nn.CrossEntropyLoss(ignore_index=src_tokenizer.pad_token_id)
 
-for batch in loader:
-    src, mask, tgt = batch["input_ids"], batch["attention_mask"], batch["labels"]
-    tgt_lookahead_mask = create_look_ahead_mask(tgt.size(1)) 
-    output = model(src, tgt, mask.unsqueeze(1).unsqueeze(2), tgt_lookahead_mask)
-    break
+num_epochs = 10
+for epoch in range(num_epochs):
+    _ = transformer_model.train()
+    total_loss = 0
+
+    for batch in dataloader:
+        # Get inputs and target labels
+        src = batch['input_ids']  # Shape: (batch_size, src_seq_len)
+        src_padding_mask = batch['attention_mask'].unsqueeze(1).unsqueeze(2)
+        tgt = batch['labels']     # Shape: (batch_size, tgt_seq_len)
+        tgt_input = tgt[:, :-1]   # Exclude the last token for input
+        tgt_output = tgt[:, 1:]   # Shift target by one for prediction
+        
+        # Create the padding and look-ahead masks
+        tgt_look_ahead_mask = create_look_ahead_mask(tgt_input.size(1))
+
+        # Forward pass through the transformer
+        outputs = transformer_model(
+            src, tgt_input, 
+            src_padding_mask=src_padding_mask, 
+            tgt_look_ahead_mask=tgt_look_ahead_mask
+        )
+
+        
+        # Reshape outputs and labels for computing loss
+        outputs = outputs.reshape(-1, tgt_vocab_size)  # Flatten the output
+        tgt_output = tgt_output.view(-1)  # Flatten target output
+        
+        # Compute loss
+        loss = loss_fn(outputs, tgt_output)
+        
+        # Backpropagation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+
+    print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {total_loss / len(dataloader)}")
