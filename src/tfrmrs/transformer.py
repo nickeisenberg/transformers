@@ -6,25 +6,25 @@ from torch.types import Device
 
 
 class Transformer(nn.Module):
-    def __init__(self, src_vocab_size, tgt_vocab_size, d_model, n_heads,
+    def __init__(self, src_vocab_size, tgt_vocab_size, embed_dim, n_heads,
                  num_encoder_layers, num_decoder_layers, 
                  dim_feedforward, max_len=5000, dropout=0.1):
         super().__init__()
         
         # Encoder
         self.encoder = TransformerEncoder(
-            src_vocab_size, d_model, n_heads, num_encoder_layers, 
+            src_vocab_size, embed_dim, n_heads, num_encoder_layers, 
             dim_feedforward, max_len, dropout
         )
         
         # Decoder
         self.decoder = TransformerDecoder(
-            tgt_vocab_size, d_model, n_heads, num_decoder_layers, 
+            tgt_vocab_size, embed_dim, n_heads, num_decoder_layers, 
             dim_feedforward, max_len, dropout
         )
         
         # Final linear layer that projects decoder's output to the target vocabulary size
-        self.fc_out = nn.Linear(d_model, tgt_vocab_size)
+        self.fc_out = nn.Linear(embed_dim, tgt_vocab_size)
         
         # Softmax is typically applied later during inference or training (like using cross-entropy loss)
     
@@ -73,7 +73,7 @@ class Transformer(nn.Module):
         )  # Start with <SOS> token
 
         # Step 3: Iteratively generate tokens
-        for i in range(max_len):
+        for _ in range(max_len):
             # Step 4: Create look-ahead mask for the target sequence
             tgt_look_ahead_mask = create_look_ahead_mask(
                 tgt_tokens.size(1), device
@@ -177,14 +177,14 @@ class SelfAttention(nn.Module):
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=5000):
+    def __init__(self, embed_dim, max_len=5000):
         super().__init__()
 
-        # Create a matrix of shape (max_len, d_model) for positional encodings
-        pe = torch.zeros(max_len, d_model)
+        # Create a matrix of shape (max_len, embed_dim) for positional encodings
+        pe = torch.zeros(max_len, embed_dim)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
-            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+            torch.arange(0, embed_dim, 2).float() * (-math.log(10000.0) / embed_dim)
         )
 
         # Apply sin to even indices and cos to odd indices
@@ -192,7 +192,7 @@ class PositionalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
 
         # Add a batch dimension
-        pe = pe.unsqueeze(0)  # Shape: (1, max_len, d_model)
+        pe = pe.unsqueeze(0)  # Shape: (1, max_len, embed_dim)
         self.register_buffer('pe', pe)
 
     def forward(self, x):
@@ -202,21 +202,21 @@ class PositionalEncoding(nn.Module):
 
 
 class TransformerEncoderBlock(nn.Module):
-    def __init__(self, d_model, n_heads, dim_feedforward, dropout=0.1):
+    def __init__(self, embed_dim, n_heads, dim_feedforward, dropout=0.1):
         super().__init__()
 
         # Self-attention layer (with mask)
-        self.self_attention = SelfAttention(d_model, n_heads)
+        self.self_attention = SelfAttention(embed_dim, n_heads)
 
         # Layer normalization
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.norm2 = nn.LayerNorm(embed_dim)
 
         # Feed-forward network
         self.feed_forward = nn.Sequential(
-            nn.Linear(d_model, dim_feedforward),
+            nn.Linear(embed_dim, dim_feedforward),
             nn.ReLU(),
-            nn.Linear(dim_feedforward, d_model)
+            nn.Linear(dim_feedforward, embed_dim)
         )
 
         # Dropout layer
@@ -224,32 +224,32 @@ class TransformerEncoderBlock(nn.Module):
 
     def forward(self, x, padding_mask=None):
         # Step 1: Self-attention layer with residual connection and layer normalization
-        # attn_output.shape() = (batch_size, seq_len, d_model)
+        # attn_output.shape() = (batch_size, seq_len, embed_dim)
         attn_output, _ = self.self_attention(x, x, x, padding_mask)  
         x = self.norm1(x + self.dropout(attn_output))
 
         # Step 2: Feed-forward network with residual connection and layer normalization
-        ff_output = self.feed_forward(x)  # (batch_size, seq_len, d_model)
+        ff_output = self.feed_forward(x)  # (batch_size, seq_len, embed_dim)
         x = self.norm2(x + self.dropout(ff_output))
 
         return x
 
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, vocab_size, d_model, n_heads, num_layers, 
+    def __init__(self, vocab_size, embed_dim, n_heads, num_layers, 
                  dim_feedforward, max_len=5000, dropout=0.1):
         super().__init__()
 
         # Embedding layer for input tokens
-        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
         
         # Positional encoding layer
-        self.positional_encoding = PositionalEncoding(d_model, max_len)
+        self.positional_encoding = PositionalEncoding(embed_dim, max_len)
 
         # Transformer encoder blocks (stack of layers)
         self.layers = nn.ModuleList(
             [
-                TransformerEncoderBlock(d_model, n_heads, dim_feedforward, dropout) 
+                TransformerEncoderBlock(embed_dim, n_heads, dim_feedforward, dropout) 
                 for _ in range(num_layers)
             ]
         )
@@ -259,7 +259,7 @@ class TransformerEncoder(nn.Module):
 
     def forward(self, input_tokens, padding_mask=None):
         # Step 1: Embed the input tokens
-        x = self.embedding(input_tokens)  # (batch_size, seq_len, d_model)
+        x = self.embedding(input_tokens)  # (batch_size, seq_len, embed_dim)
 
         # Step 2: Add positional encoding
         x = self.positional_encoding(x)
@@ -273,24 +273,23 @@ class TransformerEncoder(nn.Module):
 
         return x
 
-
 class TransformerDecoderBlock(nn.Module):
-    def __init__(self, d_model, n_heads, dim_feedforward, dropout=0.1):
+    def __init__(self, embed_dim, n_heads, dim_feedforward, dropout=0.1):
         super().__init__()
         # Masked self-attention for the decoder
-        self.self_attention = SelfAttention(d_model, n_heads)
+        self.self_attention = SelfAttention(embed_dim, n_heads)
         # Cross-attention (encoder-decoder attention)
-        self.cross_attention = SelfAttention(d_model, n_heads)
+        self.cross_attention = SelfAttention(embed_dim, n_heads)
         # Feed-forward network
         self.feed_forward = nn.Sequential(
-            nn.Linear(d_model, dim_feedforward),
+            nn.Linear(embed_dim, dim_feedforward),
             nn.ReLU(),
-            nn.Linear(dim_feedforward, d_model)
+            nn.Linear(dim_feedforward, embed_dim)
         )
         # Layer normalization
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.norm2 = nn.LayerNorm(embed_dim)
+        self.norm3 = nn.LayerNorm(embed_dim)
         # Dropout layer
         self.dropout = nn.Dropout(dropout)
 
@@ -313,20 +312,20 @@ class TransformerDecoderBlock(nn.Module):
 
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, vocab_size, d_model, n_heads, num_layers, 
+    def __init__(self, vocab_size, embed_dim, n_heads, num_layers, 
                  dim_feedforward, max_len=5000, dropout=0.1):
         super().__init__()
 
         # Embedding layer for input tokens (target sequence)
-        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
         
         # Positional encoding for target sequences
-        self.positional_encoding = PositionalEncoding(d_model, max_len)
+        self.positional_encoding = PositionalEncoding(embed_dim, max_len)
 
         # Stack of decoder layers
         self.layers = nn.ModuleList(
             [
-                TransformerDecoderBlock(d_model, n_heads, dim_feedforward, dropout) 
+                TransformerDecoderBlock(embed_dim, n_heads, dim_feedforward, dropout) 
                 for _ in range(num_layers)
             ]
         )
@@ -337,7 +336,7 @@ class TransformerDecoder(nn.Module):
     def forward(self, target_tokens, encoder_output, look_ahead_mask=None, 
                 padding_mask=None):
         # Step 1: Embed the target tokens
-        x = self.embedding(target_tokens)  # (batch_size, seq_len, d_model)
+        x = self.embedding(target_tokens)  # (batch_size, seq_len, embed_dim)
 
         # Step 2: Add positional encoding
         x = self.positional_encoding(x)
@@ -370,7 +369,7 @@ if __name__ == "__main__":
     # Define the parameters
     src_vocab_size = 10000  # Source vocabulary size
     tgt_vocab_size = 10000  # Target vocabulary size
-    d_model = 512            # Embedding size
+    embed_dim = 512            # Embedding size
     n_heads = 8              # Number of attention heads
     num_encoder_layers = 6   # Number of encoder layers
     num_decoder_layers = 6   # Number of decoder layers
@@ -379,7 +378,7 @@ if __name__ == "__main__":
     dropout = 0.1            # Dropout rate
     
     # Create the Transformer model
-    model = Transformer(src_vocab_size, tgt_vocab_size, d_model, n_heads, 
+    model = Transformer(src_vocab_size, tgt_vocab_size, embed_dim, n_heads, 
                         num_encoder_layers, num_decoder_layers, 
                         dim_feedforward, max_len, dropout)
     
@@ -399,4 +398,3 @@ if __name__ == "__main__":
     
     # Print output shape
     print("Output shape:", output.shape)  # Expected shape: (batch_size, tgt_seq_len, tgt_vocab_size)
-

@@ -40,7 +40,7 @@ def create_batch(batch_size=32, sos_token=-5, eos_token=-1):
     return src_batch, tgt_batch
 
 
-def train_on_epoch(model, criterion, optimizer, epoch):
+def train_one_epoch(model, criterion, optimizer, epoch):
     _ = model.train()
     
     # Generate a batch of data
@@ -103,7 +103,7 @@ criterion = nn.CrossEntropyLoss()
 # Training loop
 num_epochs = 1000
 for epoch in range(num_epochs):
-    train_on_epoch(model, criterion, optimizer, epoch)
+    train_one_epoch(model, criterion, optimizer, epoch)
 
 # inference_example
 src_seq = [ 

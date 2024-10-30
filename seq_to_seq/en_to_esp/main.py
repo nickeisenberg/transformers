@@ -1,3 +1,4 @@
+from tqdm import tqdm
 import torch
 from transformers import MarianTokenizer
 import os
