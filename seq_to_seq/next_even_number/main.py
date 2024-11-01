@@ -91,7 +91,7 @@ eos_token = 3  # Define <EOS> token ID
 # Instantiate the transformer
 model = Transformer(
     src_vocab_size=src_vocab_size, tgt_vocab_size=tgt_vocab_size, 
-    d_model=d_model, n_heads=n_heads, num_encoder_layers=num_encoder_layers, 
+    embed_dim=d_model, n_heads=n_heads, num_encoder_layers=num_encoder_layers, 
     num_decoder_layers=num_decoder_layers, dim_feedforward=dim_feedforward, 
     max_len=max_len_tgt, dropout=dropout
 ).to(device)
