@@ -70,7 +70,8 @@ class Transformer(nn.Module):
         device = src.device
 
         # Step 1: Encode the source sequence
-        encoder_output = self.encoder(src, src_padding_mask)
+        encoder_output = self.encoder(input_tokens=src, 
+                                      padding_mask=src_padding_mask)
 
         # Step 2: Initialize the target sequence with the <SOS> token
         batch_size = src.size(0)
@@ -87,7 +88,8 @@ class Transformer(nn.Module):
 
             # Step 5: Decode using the current target sequence
             decoder_output = self.decoder(
-                tgt_tokens, encoder_output, tgt_look_ahead_mask
+                target_tokens=tgt_tokens, encoder_output=encoder_output, 
+                look_ahead_mask=tgt_look_ahead_mask
             )
 
             # Step 6: Apply final linear layer to get predictions
