@@ -41,8 +41,9 @@ class Transformer(nn.Module):
         #     tgt, encoder_output, tgt_look_ahead_mask, tgt_padding_mask
         # )
         decoder_output = self.decoder(
-            tgt, encoder_output, tgt_look_ahead_mask, 
-            src_padding_mask, src_padding_value
+            target_tokens=tgt, encoder_output=encoder_output,
+            look_ahead_mask=tgt_look_ahead_mask, padding_mask=src_padding_mask,
+            padding_value=src_padding_value
         )
         
         # Project the decoder's output to the target vocabulary space
@@ -354,7 +355,7 @@ class TransformerDecoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, target_tokens, encoder_output, look_ahead_mask=None, 
-                padding_mask=None, padding_value):
+                padding_mask=None, padding_value=0):
         # Step 1: Embed the target tokens
         x = self.embedding(target_tokens)  # (batch_size, seq_len, embed_dim)
 
@@ -366,8 +367,9 @@ class TransformerDecoder(nn.Module):
 
         # Step 4: Pass through each decoder block
         for layer in self.layers:
-            x = layer(x, encoder_output, look_ahead_mask, 
-                      padding_mask, padding_value)
+            x = layer(x, encoder_output=encoder_output,
+                      look_ahead_mask=look_ahead_mask,
+                      padding_mask=padding_mask, padding_value=padding_value)
 
         return x
 
