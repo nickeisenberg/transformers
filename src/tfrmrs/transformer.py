@@ -28,16 +28,21 @@ class Transformer(nn.Module):
         
         # Softmax is typically applied later during inference or training (like using cross-entropy loss)
     
-    def forward(self, src, tgt, src_padding_mask=None, tgt_look_ahead_mask=None):
+    def forward(self, src, tgt, src_padding_mask=None, src_padding_value=0, 
+                tgt_look_ahead_mask=None):
         # Encode the source sequence
-        encoder_output = self.encoder(src, src_padding_mask)
+        encoder_output = self.encoder(
+            input_tokens=src, padding_mask=src_padding_mask, 
+            padding_value=src_padding_value
+        )
         
         # Decode the target sequence with attention to the encoder output
         # decoder_output = self.decoder(
         #     tgt, encoder_output, tgt_look_ahead_mask, tgt_padding_mask
         # )
         decoder_output = self.decoder(
-            tgt, encoder_output, tgt_look_ahead_mask, src_padding_mask
+            tgt, encoder_output, tgt_look_ahead_mask, 
+            src_padding_mask, src_padding_value
         )
         
         # Project the decoder's output to the target vocabulary space
@@ -123,7 +128,7 @@ class SelfAttention(nn.Module):
         # Dropout for regularization
         self.dropout = nn.Dropout(dropout)
         
-    def forward(self, query, key, value, mask=None):
+    def forward(self, query, key, value, padding_mask=None, padding_value=0):
         # batch_size = query.size(0)
         batch_size, seq_len_q, _ = query.size()
         seq_len_k = key.size(1)  # Sequence length for K (which could differ from Q)
@@ -148,7 +153,9 @@ class SelfAttention(nn.Module):
         ).transpose(1, 2).contiguous()
         
         # Perform scaled dot-product attention for each head, with optional padding mask
-        attn_output, attn_weights = self.scaled_dot_product_attention(Q, K, V, mask)
+        attn_output, attn_weights = self.scaled_dot_product_attention(
+            Q, K, V, padding_mask, padding_value
+        )
         
         # Concatenate the attention outputs from all heads
         # New shape: (batch_size, seq_len, embed_dim)
@@ -161,14 +168,18 @@ class SelfAttention(nn.Module):
         
         return output, attn_weights
 
-    def scaled_dot_product_attention(self, query, key, value, mask=None):
+    def scaled_dot_product_attention(self, query, key, value, padding_mask=None,
+                                     padding_value=0):
         # Compute the attention scores
-        attn_scores = torch.matmul(query, key.transpose(-2, -1))  # (batch_size, num_heads, seq_len, seq_len)
-        attn_scores /= torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float32))  # Scale by √d_k
+        # (batch_size, num_heads, seq_len, seq_len)
+        attn_scores = torch.matmul(query, key.transpose(-2, -1))
+        attn_scores /= torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float32))
 
         # Apply the padding mask if provided
-        if mask is not None:
-            attn_scores = attn_scores.masked_fill(mask == 0, float('-inf'))
+        if padding_mask is not None:
+            attn_scores = attn_scores.masked_fill(
+                padding_mask == padding_value, float('-inf')
+            )
 
         # Apply softmax to get attention weights
         attn_weights = F.softmax(attn_scores, dim=-1)
@@ -228,10 +239,10 @@ class TransformerEncoderBlock(nn.Module):
         # Dropout layer
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, padding_mask=None):
+    def forward(self, x, padding_mask=None, padding_value=0):
         # Step 1: Self-attention layer with residual connection and layer normalization
         # attn_output.shape() = (batch_size, seq_len, embed_dim)
-        attn_output, _ = self.self_attention(x, x, x, padding_mask)  
+        attn_output, _ = self.self_attention(x, x, x, padding_mask, padding_value)  
         x = self.norm1(x + self.dropout(attn_output))
 
         # Step 2: Feed-forward network with residual connection and layer normalization
@@ -263,7 +274,7 @@ class TransformerEncoder(nn.Module):
         # Dropout after embedding + positional encoding
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, input_tokens, padding_mask=None):
+    def forward(self, input_tokens, padding_mask=None, padding_value=0):
         # Step 1: Embed the input tokens
         x = self.embedding(input_tokens)  # (batch_size, seq_len, embed_dim)
 
@@ -275,7 +286,7 @@ class TransformerEncoder(nn.Module):
 
         # Step 4: Pass through the encoder layers
         for layer in self.layers:
-            x = layer(x, padding_mask)
+            x = layer(x, padding_mask=padding_mask, padding_value=padding_value)
 
         return x
 
@@ -300,14 +311,16 @@ class TransformerDecoderBlock(nn.Module):
         # Dropout layer
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, encoder_output, look_ahead_mask=None, padding_mask=None):
+    def forward(self, x, encoder_output, look_ahead_mask=None, 
+                padding_mask=None, padding_value=0):
         # Step 1: Masked self-attention with residual connection and layer normalization
         attn_output, _ = self.self_attention(x, x, x, look_ahead_mask)  
         x = self.norm1(x + self.dropout(attn_output))
 
         # Step 2: Cross-attention with residual connection and layer normalization
         cross_attn_output, _ = self.cross_attention(
-            x, encoder_output, encoder_output, padding_mask
+            query=x, key=encoder_output, value=encoder_output, 
+            padding_mask=padding_mask, padding_value=padding_value
         )
         x = self.norm2(x + self.dropout(cross_attn_output))
 
@@ -341,7 +354,7 @@ class TransformerDecoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, target_tokens, encoder_output, look_ahead_mask=None, 
-                padding_mask=None):
+                padding_mask=None, padding_value):
         # Step 1: Embed the target tokens
         x = self.embedding(target_tokens)  # (batch_size, seq_len, embed_dim)
 
@@ -353,7 +366,8 @@ class TransformerDecoder(nn.Module):
 
         # Step 4: Pass through each decoder block
         for layer in self.layers:
-            x = layer(x, encoder_output, look_ahead_mask, padding_mask)
+            x = layer(x, encoder_output, look_ahead_mask, 
+                      padding_mask, padding_value)
 
         return x
 
@@ -365,7 +379,7 @@ def create_padding_mask(input_tokens, pad_token=0):
     return mask
 
 
-def create_look_ahead_mask(seq_len, device: int | str | Device ="cpu"):
+def create_look_ahead_mask(seq_len, device: int | str | Device = "cpu"):
     """Create a mask where each position i can only attend to positions <= i"""
     # mase.shape() = (1, 1, seq_len, seq_len)
     mask = torch.tril(torch.ones((seq_len, seq_len))).unsqueeze(0).unsqueeze(0) 
