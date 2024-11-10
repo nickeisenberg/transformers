@@ -402,24 +402,55 @@ if __name__ == "__main__":
     max_len = 500            # Maximum sequence length
     dropout = 0.1            # Dropout rate
     
-    # Create the Transformer model
-    model = Transformer(src_vocab_size, tgt_vocab_size, embed_dim, n_heads, 
-                        num_encoder_layers, num_decoder_layers, 
-                        dim_feedforward, max_len, dropout)
-    
     # Create dummy input and target sequences
     batch_size = 32
-    src = torch.randint(0, src_vocab_size, (batch_size, 20))
-    tgt = torch.randint(0, tgt_vocab_size, (batch_size, 20))
-    
+    src = torch.randint(0, src_vocab_size, (batch_size, 25))
+    tgt = torch.randint(0, tgt_vocab_size, (batch_size, 25))
     
     # Create padding masks (assuming no padding here; using all ones)
     # Create look-ahead mask for the target sequence
     src_padding_mask = create_padding_mask(src)  
     tgt_look_ahead_mask = create_look_ahead_mask(tgt.size(1))
     
-    # Forward pass through the Transformer
-    output = model(src, tgt, src_padding_mask, tgt_look_ahead_mask)
+    #--------------------------------------------------
+    # Transfomer piece by piece
+    #--------------------------------------------------
+    # encoder
+    encoder = TransformerEncoder(
+        vocab_size=src_vocab_size, embed_dim=embed_dim,n_heads=n_heads,
+        num_layers=num_encoder_layers, dim_feedforward=dim_feedforward,
+        max_len=max_len
+    )
+    encoder_output = encoder(input_tokens=src, padding_mask=src_padding_mask, padding_value=0)
+    encoder_output.shape
     
-    # Print output shape
-    print("Output shape:", output.shape)  # Expected shape: (batch_size, tgt_seq_len, tgt_vocab_size)
+    # decoder
+    decoder = TransformerDecoder(
+        vocab_size=tgt_vocab_size, embed_dim=embed_dim, n_heads=n_heads, 
+        num_layers=num_decoder_layers, dim_feedforward=dim_feedforward, 
+        max_len=max_len, dropout=dropout
+    )
+    decoder_output = decoder(
+        target_tokens=tgt, encoder_output=encoder_output,
+        look_ahead_mask=tgt_look_ahead_mask, padding_mask=src_padding_mask,
+        padding_value=0
+    )
+    decoder_output.shape
+    
+    #fc output layer
+    fc = nn.Linear(embed_dim, tgt_vocab_size)
+    fc_output = fc(decoder_output)
+    fc_output.shape
+    
+    
+    #--------------------------------------------------
+    # Transfomer model
+    #--------------------------------------------------
+    # Transformer
+    transformer = Transformer(src_vocab_size, tgt_vocab_size, embed_dim, n_heads, 
+                        num_encoder_layers, num_decoder_layers, 
+                        dim_feedforward, max_len, dropout)
+    
+    output = transformer(src, tgt, src_padding_mask, tgt_look_ahead_mask)
+    # Expected shape: (batch_size, tgt_seq_len, tgt_vocab_size)
+    print("Output shape:", output.shape)  
