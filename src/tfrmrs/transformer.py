@@ -456,7 +456,8 @@ if __name__ == "__main__":
     )
     
     output = transformer(
-        input_tokens=input_tokens, target_tokens=target_tokens, src_padding_mask=src_padding_mask,
+        input_tokens=input_tokens, target_tokens=target_tokens,
+        src_padding_mask=src_padding_mask,
         tgt_look_ahead_mask=tgt_look_ahead_mask
     )
     # Expected shape: (batch_size, tgt_seq_len, tgt_vocab_size)

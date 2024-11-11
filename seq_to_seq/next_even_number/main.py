@@ -55,7 +55,11 @@ def train_one_epoch(model, criterion, optimizer, epoch):
     tgt_look_ahead_mask = create_look_ahead_mask(tgt_input.size(1), device)
     
     # Forward pass
-    output = model(src, tgt_input, src_padding_mask, tgt_look_ahead_mask)
+    output = model(
+        input_tokens=src, target_tokens=tgt_input,
+        src_padding_mask=src_padding_mask,
+        tgt_look_ahead_mask=tgt_look_ahead_mask
+    )
     
     # Reshape output and target for cross-entropy loss
     output = output.reshape(-1, tgt_vocab_size)
@@ -93,7 +97,7 @@ model = Transformer(
     src_vocab_size=src_vocab_size, tgt_vocab_size=tgt_vocab_size, 
     embed_dim=d_model, n_heads=n_heads, num_encoder_layers=num_encoder_layers, 
     num_decoder_layers=num_decoder_layers, dim_feedforward=dim_feedforward, 
-    max_len=max_len_tgt, dropout=dropout
+    max_len=100, dropout=dropout
 ).to(device)
 
 # Optimizer and loss function
