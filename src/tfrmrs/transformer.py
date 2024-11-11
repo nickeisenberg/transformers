@@ -29,20 +29,20 @@ class Transformer(nn.Module):
         
         # Softmax is typically applied later during inference or training (like using cross-entropy loss)
     
-    def forward(self, src, tgt, src_padding_mask=None, src_padding_value=0, 
+    def forward(self, input_tokens, target_tokens, src_padding_mask=None, src_padding_value=0, 
                 tgt_look_ahead_mask=None):
         # Encode the source sequence
         encoder_output = self.encoder(
-            input_tokens=src, padding_mask=src_padding_mask, 
+            input_tokens=input_tokens, padding_mask=src_padding_mask, 
             padding_value=src_padding_value
         )
         
         # Decode the target sequence with attention to the encoder output
         # decoder_output = self.decoder(
-        #     tgt, encoder_output, tgt_look_ahead_mask, tgt_padding_mask
+        #     target_tokens, encoder_output, tgt_look_ahead_mask, tgt_padding_mask
         # )
         decoder_output = self.decoder(
-            target_tokens=tgt, encoder_output=encoder_output,
+            target_tokens=target_tokens, encoder_output=encoder_output,
             look_ahead_mask=tgt_look_ahead_mask, padding_mask=src_padding_mask,
             padding_value=src_padding_value
         )
@@ -54,12 +54,12 @@ class Transformer(nn.Module):
         return output
 
 
-    def inference(self, src, max_len, sos_token, eos_token, src_padding_mask=None):
+    def inference(self, input_tokens, max_len, sos_token, eos_token, src_padding_mask=None):
         """
         Inference method that generates the target sequence autoregressively.
         
         Args:
-            src: (batch_size, src_seq_len) Source sequence.
+            input_tokens: (batch_size, src_seq_len) Source sequence.
             max_len: Maximum length of the generated sequence.
             sos_token: The start-of-sequence token (special token to begin the generation).
             eos_token: The end-of-sequence token (special token to end the generation).
@@ -69,16 +69,16 @@ class Transformer(nn.Module):
             Generated target sequence of shape (batch_size, generated_seq_len).
         """
     
-        device = src.device
+        device = input_tokens.device
 
         # Step 1: Encode the source sequence
-        encoder_output = self.encoder(input_tokens=src, 
+        encoder_output = self.encoder(input_tokens=input_tokens, 
                                       padding_mask=src_padding_mask)
 
         # Step 2: Initialize the target sequence with the <SOS> token
-        batch_size = src.size(0)
+        batch_size = input_tokens.size(0)
         tgt_tokens = torch.full(
-            (batch_size, 1), sos_token, dtype=torch.long, device=src.device
+            (batch_size, 1), sos_token, dtype=torch.long, device=input_tokens.device
         )  # Start with <SOS> token
 
         # Step 3: Iteratively generate tokens
@@ -393,74 +393,71 @@ def create_look_ahead_mask(seq_len, device: int | str | Device = "cpu"):
 
 
 if __name__ == "__main__":
-    pass
-
-# Define the parameters
-src_vocab_size = 10000  # Source vocabulary size
-tgt_vocab_size = 10000  # Target vocabulary size
-embed_dim = 512            # Embedding size
-n_heads = 8              # Number of attention heads
-num_encoder_layers = 6   # Number of encoder layers
-num_decoder_layers = 6   # Number of decoder layers
-dim_feedforward = 2048    # Feedforward network size
-max_len = 500            # Maximum sequence length
-dropout = 0.1            # Dropout rate
-
-# Create dummy input and target sequences
-batch_size = 32
-src = torch.randint(0, src_vocab_size, (batch_size, 25))
-tgt = torch.randint(0, tgt_vocab_size, (batch_size, 30))
-
-# Create padding masks (assuming no padding here; using all ones)
-# Create look-ahead mask for the target sequence
-src_padding_mask = create_padding_mask(src)  
-tgt_look_ahead_mask = create_look_ahead_mask(tgt.size(1))
-
-#--------------------------------------------------
-# Transfomer piece by piece
-#--------------------------------------------------
-# encoder
-encoder = TransformerEncoder(
-    vocab_size=src_vocab_size, embed_dim=embed_dim, n_heads=n_heads,
-    num_layers=num_encoder_layers, dim_feedforward=dim_feedforward,
-    max_len=max_len
-)
-encoder_output = encoder(
-    input_tokens=src, padding_mask=src_padding_mask, padding_value=0
-)
-encoder_output.shape
-
-# decoder
-decoder = TransformerDecoder(
-    vocab_size=tgt_vocab_size, embed_dim=embed_dim, n_heads=n_heads, 
-    num_layers=num_decoder_layers, dim_feedforward=dim_feedforward, 
-    max_len=max_len, dropout=dropout
-)
-decoder_output = decoder(
-    target_tokens=tgt, encoder_output=encoder_output,
-    look_ahead_mask=tgt_look_ahead_mask, padding_mask=src_padding_mask,
-    padding_value=0
-)
-decoder_output.shape
-
-#fc output layer
-fc = nn.Linear(embed_dim, tgt_vocab_size)
-fc_output = fc(decoder_output)
-fc_output.shape
-
-
-#--------------------------------------------------
-# Transfomer model
-#--------------------------------------------------
-# Transformer
-transformer = Transformer(
-    src_vocab_size, tgt_vocab_size, embed_dim, n_heads, num_encoder_layers,
-    num_decoder_layers, dim_feedforward, max_len, dropout
-)
-
-output = transformer(
-    src=src, tgt=tgt, src_padding_mask=src_padding_mask,
-    tgt_look_ahead_mask=tgt_look_ahead_mask
-)
-# Expected shape: (batch_size, tgt_seq_len, tgt_vocab_size)
-print("Output shape:", output.shape)  
+    # Define the parameters
+    src_vocab_size = 10000  # Source vocabulary size
+    tgt_vocab_size = 10000  # Target vocabulary size
+    embed_dim = 512            # Embedding size
+    n_heads = 8              # Number of attention heads
+    num_encoder_layers = 6   # Number of encoder layers
+    num_decoder_layers = 6   # Number of decoder layers
+    dim_feedforward = 2048    # Feedforward network size
+    max_len = 500            # Maximum sequence length
+    dropout = 0.1            # Dropout rate
+    
+    # Create dummy input and target sequences
+    batch_size = 32
+    input_tokens = torch.randint(0, src_vocab_size, (batch_size, 25))
+    target_tokens = torch.randint(0, tgt_vocab_size, (batch_size, 30))
+    
+    # Create padding masks (assuming no padding here; using all ones)
+    # Create look-ahead mask for the target sequence
+    src_padding_mask = create_padding_mask(input_tokens)  
+    tgt_look_ahead_mask = create_look_ahead_mask(target_tokens.size(1))
+    
+    #--------------------------------------------------
+    # Transfomer piece by piece
+    #--------------------------------------------------
+    encoder = TransformerEncoder(
+        vocab_size=src_vocab_size, embed_dim=embed_dim, n_heads=n_heads,
+        num_layers=num_encoder_layers, dim_feedforward=dim_feedforward,
+        max_len=max_len
+    )
+    encoder_output = encoder(
+        input_tokens=input_tokens, padding_mask=src_padding_mask, padding_value=0
+    )
+    encoder_output.shape
+    
+    # decoder
+    decoder = TransformerDecoder(
+        vocab_size=tgt_vocab_size, embed_dim=embed_dim, n_heads=n_heads, 
+        num_layers=num_decoder_layers, dim_feedforward=dim_feedforward, 
+        max_len=max_len, dropout=dropout
+    )
+    decoder_output = decoder(
+        target_tokens=target_tokens, encoder_output=encoder_output,
+        look_ahead_mask=tgt_look_ahead_mask, padding_mask=src_padding_mask,
+        padding_value=0
+    )
+    decoder_output.shape
+    
+    #fc output layer
+    fc = nn.Linear(embed_dim, tgt_vocab_size)
+    fc_output = fc(decoder_output)
+    fc_output.shape
+    
+    
+    #--------------------------------------------------
+    # Transfomer model
+    #--------------------------------------------------
+    # Transformer
+    transformer = Transformer(
+        src_vocab_size, tgt_vocab_size, embed_dim, n_heads, num_encoder_layers,
+        num_decoder_layers, dim_feedforward, max_len, dropout
+    )
+    
+    output = transformer(
+        input_tokens=input_tokens, target_tokens=target_tokens, src_padding_mask=src_padding_mask,
+        tgt_look_ahead_mask=tgt_look_ahead_mask
+    )
+    # Expected shape: (batch_size, tgt_seq_len, tgt_vocab_size)
+    print("Output shape:", output.shape)  
