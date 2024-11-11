@@ -411,7 +411,7 @@ if __name__ == "__main__":
     # Create look-ahead mask for the target sequence
     src_padding_mask = create_padding_mask(src)  
     tgt_look_ahead_mask = create_look_ahead_mask(tgt.size(1))
-    
+
     #--------------------------------------------------
     # Transfomer piece by piece
     #--------------------------------------------------
