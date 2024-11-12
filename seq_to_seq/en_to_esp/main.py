@@ -100,8 +100,8 @@ def train_loop(transformer, dataloader, criterion, optimizer, device="cpu"):
         decoder_input_ids = decoder_input_ids.to(device)
         labels = labels.to(device)
     
-        src_padding_mask = create_padding_mask(input_tokens, pad_token=65000)  
-        tgt_look_ahead_mask = create_look_ahead_mask(decoder_input_ids.size(1))
+        src_padding_mask = create_padding_mask(input_tokens, pad_token=65000).to(device)  
+        tgt_look_ahead_mask = create_look_ahead_mask(decoder_input_ids.size(1)).to(device)
         
         optimizer.zero_grad()
         
@@ -154,5 +154,5 @@ def criterion(output, labels):
 optimizer = Adam(transformer.parameters(), lr=1e-4)
 
 for epoch in range(epochs):
-    loss = train_loop(transformer, dataloader, criterion, optimizer)
+    loss = train_loop(transformer, dataloader, criterion, optimizer, "cuda")
     print(f"EPOCH {epoch + 1}", loss)
