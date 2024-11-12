@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+from torch.optim import Adam
 from transformers import MarianTokenizer
 import os
 import pandas as pd
@@ -45,9 +47,10 @@ class TranslationDataset(Dataset):
         )
         
         return {
-            "input_ids": src_encoded["input_ids"].squeeze(),  # English tokens
-            "attention_mask": src_encoded["attention_mask"].squeeze(),  # Attention mask
-            "labels": tgt_encoded["input_ids"].squeeze()  # Spanish tokens (target)
+            "input_ids": src_encoded["input_ids"].squeeze(),
+            "attention_mask": src_encoded["attention_mask"].squeeze(),
+            "decoder_input_ids": tgt_encoded["input_ids"].squeeze()[:-1],
+            "labels": tgt_encoded["input_ids"].squeeze()[1:]
         }
 
 def get_tokenizer():
@@ -73,14 +76,43 @@ def get_dataloader(dataset):
         inputs = pad([
             x["input_ids"] for x in batch
         ])
+        decoder_inputs = pad([
+            x["decoder_input_ids"] for x in batch
+        ])
         targets = pad([
             x["labels"] for x in batch
         ])
-        return inputs, targets
+        return inputs, decoder_inputs, targets
 
     return DataLoader(
         dataset, batch_size=10, shuffle=True, collate_fn=collate_fn
     )
+
+def train_loop(transformer, dataloader, criterion, optimizer):
+    avg_loss = 0
+    for i, (input_tokens, decoder_input_ids, labels) in enumerate(dataloader):
+    
+        src_padding_mask = create_padding_mask(input_tokens, pad_token=65000)  
+        tgt_look_ahead_mask = create_look_ahead_mask(decoder_input_ids.size(1))
+        
+        optimizer.zero_grad()
+        
+        output = transformer(
+            input_tokens=input_tokens, target_tokens=decoder_input_ids,
+            src_padding_mask=src_padding_mask, src_padding_token=65000,
+            tgt_look_ahead_mask=tgt_look_ahead_mask
+        )
+        
+        loss = criterion(output, labels)
+    
+        avg_loss += loss.item()
+        
+        loss.backward()
+        
+        optimizer.step()
+    
+        if i % 25:
+            print(avg_loss / (i + 1))
 
 tokenizer = get_tokenizer()
 dataset = get_dataset(tokenizer)
@@ -88,6 +120,7 @@ dataloader = get_dataloader(dataset)
 
 src_vocab_size = tokenizer.vocab_size + 1
 tgt_vocab_size = tokenizer.vocab_size + 1
+pad_token = tokenizer.encode("<pad>")[0]
 embed_dim = 512
 n_heads = 8
 num_encoder_layers = 6
@@ -101,12 +134,11 @@ transformer = Transformer(
     num_decoder_layers, dim_feedforward, max_len, dropout
 )
 
-input_tokens, target_tokens = next(iter(dataloader))
-src_padding_mask = create_padding_mask(input_tokens, pad_token=65000)  
-tgt_look_ahead_mask = create_look_ahead_mask(target_tokens.size(1))
+def criterion(output, labels):
+    return nn.CrossEntropyLoss(ignore_index=pad_token)(
+        output.view(-1, output.shape[-1]), labels.view(-1)
+    )
 
-output = transformer(
-    input_tokens=input_tokens, target_tokens=target_tokens,
-    src_padding_mask=src_padding_mask, src_padding_token=65000,
-    tgt_look_ahead_mask=tgt_look_ahead_mask
-)
+optimizer = Adam(transformer.parameters(), lr=1e-4)
+
+train_loop(transformer, dataloader, criterion, optimizer)
