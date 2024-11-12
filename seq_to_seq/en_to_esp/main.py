@@ -10,11 +10,6 @@ from src.tfrmrs.transformer import (
     create_look_ahead_mask,
 )
 
-def get_tokenizers():
-    tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-es")
-    tokenizer.add_special_tokens({"bos_token": "<s>"})
-    return tokenizer
-
 
 class TranslationDataset(Dataset):
     def __init__(self, path_to_df, tokenizer, max_length=64):
@@ -56,44 +51,53 @@ class TranslationDataset(Dataset):
             "labels": tgt_encoded["input_ids"].squeeze()  # Spanish tokens (target)
         }
 
+def get_tokenizer():
+    tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-es")
+    tokenizer.add_special_tokens({"bos_token": "<s>"})
+    return tokenizer
 
-tokenizer = get_tokenizers()
-src_vocab_size = tokenizer.vocab_size + 1
-tgt_vocab_size = tokenizer.vocab_size + 1
+def get_dataset(tokenizer):
+    path_to_df = os.path.expanduser("~/datasets/en_to_esp/data.csv")
+    dataset = TranslationDataset(path_to_df=path_to_df, 
+                                 tokenizer=tokenizer, 
+                                 max_length=64)
+    return dataset
 
-path_to_df = os.path.expanduser("~/datasets/en_to_esp/data.csv")
-dataset = TranslationDataset(path_to_df=path_to_df, 
-                             tokenizer=tokenizer, 
-                             max_length=64)
-
-def collate_fn(batch):
+def get_dataloader(dataset):
     def pad(l):
         M = max([x.shape[0] for x in l])
         return torch.stack([
             torch.nn.functional.pad(x, (0, M - x.shape[0]), value=65000) for x in l
         ])
 
-    inputs = pad([
-        x["input_ids"] for x in batch
-    ])
-    targets = pad([
-        x["labels"] for x in batch
-    ])
+    def collate_fn(batch):
+    
+        inputs = pad([
+            x["input_ids"] for x in batch
+        ])
+        targets = pad([
+            x["labels"] for x in batch
+        ])
+    
+        return inputs, targets
 
-    return inputs, targets
+    return DataLoader(
+        dataset, batch_size=10, shuffle=True, collate_fn=collate_fn
+    )
 
+tokenizer = get_tokenizer()
+dataset = get_dataset(tokenizer)
+dataloader = get_dataloader(dataset)
 
-dataloader = DataLoader(
-    dataset, batch_size=10, shuffle=True, collate_fn=collate_fn
-)
-
-embed_dim = 512            # Embedding size
-n_heads = 8              # Number of attention heads
-num_encoder_layers = 6   # Number of encoder layers
-num_decoder_layers = 6   # Number of decoder layers
-dim_feedforward = 2048    # Feedforward network size
-max_len = 500            # Maximum sequence length
-dropout = 0.1            # Dropout rate
+src_vocab_size = tokenizer.vocab_size + 1
+tgt_vocab_size = tokenizer.vocab_size + 1
+embed_dim = 512
+n_heads = 8
+num_encoder_layers = 6
+num_decoder_layers = 6
+dim_feedforward = 2048
+max_len = 500
+dropout = 0.1
 
 transformer = Transformer(
     src_vocab_size, tgt_vocab_size, embed_dim, n_heads, num_encoder_layers,
@@ -103,9 +107,11 @@ transformer = Transformer(
 input_tokens, target_tokens = next(iter(dataloader))
 src_padding_mask = create_padding_mask(input_tokens, pad_token=65000)  
 tgt_look_ahead_mask = create_look_ahead_mask(target_tokens.size(1))
+
 output = transformer(
     input_tokens=input_tokens, target_tokens=target_tokens,
     src_padding_mask=src_padding_mask, src_padding_token=65000,
     tgt_look_ahead_mask=tgt_look_ahead_mask
 )
-output.shape
+
+print(output.shape)
