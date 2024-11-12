@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam
+from tqdm import tqdm
 from transformers import MarianTokenizer
 import os
 import pandas as pd
@@ -88,9 +89,16 @@ def get_dataloader(dataset):
         dataset, batch_size=10, shuffle=True, collate_fn=collate_fn
     )
 
-def train_loop(transformer, dataloader, criterion, optimizer):
+def train_loop(transformer, dataloader, criterion, optimizer, device="cpu"):
+    running_loss = 0
     avg_loss = 0
-    for i, (input_tokens, decoder_input_ids, labels) in enumerate(dataloader):
+    idx = 0
+    pbar = tqdm(dataloader)
+    for input_tokens, decoder_input_ids, labels in pbar:
+        idx += 1
+        input_tokens = input_tokens.to(device) 
+        decoder_input_ids = decoder_input_ids.to(device)
+        labels = labels.to(device)
     
         src_padding_mask = create_padding_mask(input_tokens, pad_token=65000)  
         tgt_look_ahead_mask = create_look_ahead_mask(decoder_input_ids.size(1))
@@ -105,14 +113,17 @@ def train_loop(transformer, dataloader, criterion, optimizer):
         
         loss = criterion(output, labels)
     
-        avg_loss += loss.item()
+        running_loss += loss.item()
         
         loss.backward()
         
         optimizer.step()
     
-        if i % 25:
-            print(avg_loss / (i + 1))
+        if idx % 25:
+            avg_loss = running_loss / (idx)
+            pbar.set_postfix(loss=avg_loss)
+
+    return avg_loss
 
 tokenizer = get_tokenizer()
 dataset = get_dataset(tokenizer)
@@ -128,11 +139,12 @@ num_decoder_layers = 6
 dim_feedforward = 2048
 max_len = 500
 dropout = 0.1
+epochs = 10
 
 transformer = Transformer(
     src_vocab_size, tgt_vocab_size, embed_dim, n_heads, num_encoder_layers,
     num_decoder_layers, dim_feedforward, max_len, dropout
-)
+).to(0)
 
 def criterion(output, labels):
     return nn.CrossEntropyLoss(ignore_index=pad_token)(
@@ -141,4 +153,6 @@ def criterion(output, labels):
 
 optimizer = Adam(transformer.parameters(), lr=1e-4)
 
-train_loop(transformer, dataloader, criterion, optimizer)
+for epoch in range(epochs):
+    loss = train_loop(transformer, dataloader, criterion, optimizer)
+    print(f"EPOCH {epoch + 1}", loss)
