@@ -1,4 +1,3 @@
-from tqdm import tqdm
 import torch
 from transformers import MarianTokenizer
 import os
@@ -71,14 +70,12 @@ def get_dataloader(dataset):
         ])
 
     def collate_fn(batch):
-    
         inputs = pad([
             x["input_ids"] for x in batch
         ])
         targets = pad([
             x["labels"] for x in batch
         ])
-    
         return inputs, targets
 
     return DataLoader(
@@ -113,5 +110,3 @@ output = transformer(
     src_padding_mask=src_padding_mask, src_padding_token=65000,
     tgt_look_ahead_mask=tgt_look_ahead_mask
 )
-
-print(output.shape)
