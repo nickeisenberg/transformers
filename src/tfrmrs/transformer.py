@@ -29,12 +29,12 @@ class Transformer(nn.Module):
         
         # Softmax is typically applied later during inference or training (like using cross-entropy loss)
     
-    def forward(self, input_tokens, target_tokens, src_padding_mask=None, src_padding_value=0, 
+    def forward(self, input_tokens, target_tokens, src_padding_mask=None, src_padding_token=0, 
                 tgt_look_ahead_mask=None):
         # Encode the source sequence
         encoder_output = self.encoder(
             input_tokens=input_tokens, padding_mask=src_padding_mask, 
-            padding_value=src_padding_value
+            padding_value=src_padding_token
         )
         
         # Decode the target sequence with attention to the encoder output
@@ -44,7 +44,7 @@ class Transformer(nn.Module):
         decoder_output = self.decoder(
             target_tokens=target_tokens, encoder_output=encoder_output,
             look_ahead_mask=tgt_look_ahead_mask, padding_mask=src_padding_mask,
-            padding_value=src_padding_value
+            padding_value=src_padding_token
         )
 
         

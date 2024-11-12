@@ -6,6 +6,7 @@ import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from src.tfrmrs.transformer import (
     Transformer, 
+    create_padding_mask,
     create_look_ahead_mask,
 )
 
@@ -69,7 +70,7 @@ def collate_fn(batch):
     def pad(l):
         M = max([x.shape[0] for x in l])
         return torch.stack([
-            torch.nn.functional.pad(x, (0, M - x.shape[0]), value=-1) for x in l
+            torch.nn.functional.pad(x, (0, M - x.shape[0]), value=65000) for x in l
         ])
 
     inputs = pad([
@@ -86,4 +87,25 @@ dataloader = DataLoader(
     dataset, batch_size=10, shuffle=True, collate_fn=collate_fn
 )
 
-next(iter(dataloader))
+embed_dim = 512            # Embedding size
+n_heads = 8              # Number of attention heads
+num_encoder_layers = 6   # Number of encoder layers
+num_decoder_layers = 6   # Number of decoder layers
+dim_feedforward = 2048    # Feedforward network size
+max_len = 500            # Maximum sequence length
+dropout = 0.1            # Dropout rate
+
+transformer = Transformer(
+    src_vocab_size, tgt_vocab_size, embed_dim, n_heads, num_encoder_layers,
+    num_decoder_layers, dim_feedforward, max_len, dropout
+)
+
+input_tokens, target_tokens = next(iter(dataloader))
+src_padding_mask = create_padding_mask(input_tokens, pad_token=65000)  
+tgt_look_ahead_mask = create_look_ahead_mask(target_tokens.size(1))
+output = transformer(
+    input_tokens=input_tokens, target_tokens=target_tokens,
+    src_padding_mask=src_padding_mask, src_padding_token=65000,
+    tgt_look_ahead_mask=tgt_look_ahead_mask
+)
+output.shape
