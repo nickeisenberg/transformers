@@ -86,7 +86,7 @@ def get_dataloader(dataset):
         return inputs, decoder_inputs, targets
 
     return DataLoader(
-        dataset, batch_size=10, shuffle=True, collate_fn=collate_fn
+        dataset, batch_size=16, shuffle=True, collate_fn=collate_fn
     )
 
 def train_loop(transformer, dataloader, criterion, optimizer, device="cpu"):
@@ -156,3 +156,11 @@ optimizer = Adam(transformer.parameters(), lr=1e-4)
 for epoch in range(epochs):
     loss = train_loop(transformer, dataloader, criterion, optimizer, "cuda")
     print(f"EPOCH {epoch + 1}", loss)
+
+
+tokenizer.decode(
+    transformer.inference(
+        tokenizer.encode("I am hungry", return_tensors="pt").to(0), 
+        20, 65000, 65001
+    )[0].to("cpu")
+)
