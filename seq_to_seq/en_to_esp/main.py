@@ -157,10 +157,9 @@ for epoch in range(epochs):
     loss = train_loop(transformer, dataloader, criterion, optimizer, "cuda")
     print(f"EPOCH {epoch + 1}", loss)
 
-
 tokenizer.decode(
     transformer.inference(
         tokenizer.encode("I am hungry", return_tensors="pt").to(0), 
-        20, 65000, 65001
+        20, 65000, 0
     )[0].to("cpu")
 )
