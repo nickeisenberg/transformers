@@ -213,7 +213,7 @@ for epoch in range(epochs):
 
 tokenizer.decode(
     transformer.inference(
-        tokenizer.encode("I am hungry", return_tensors="pt").to(0), 
+        tokenizer.encode("where is the library", return_tensors="pt").to(0), 
         max_len=20, sos_token=65001, eos_token=0
     )[0].to("cpu")
 )
