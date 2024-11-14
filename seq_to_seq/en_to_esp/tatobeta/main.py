@@ -15,18 +15,12 @@ from src.tfrmrs.transformer import (
 
 class TranslationDataset(Dataset):
     def __init__(self, path_to_src, path_to_tgt, tokenizer, max_length=250):
-        self.src_text = []
-        with open(path_to_src) as f:
-            for line in f.readlines():
-                self.src_text.append(line.strip())
-
-        self.tgt_text = []
-        with open(path_to_tgt) as f:
-            for line in f.readlines():
-                self.tgt_text.append(line.strip())
-
-        if not len(self.src_text) == len(self.tgt_text):
-            raise Exception("len of src not the same as tgt")
+        # Load source and target texts
+        self.src_text = [line.strip() for line in open(path_to_src)]
+        self.tgt_text = [line.strip() for line in open(path_to_tgt)]
+        
+        if len(self.src_text) != len(self.tgt_text):
+            raise ValueError("Source and target files must have the same number of lines.")
 
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -37,11 +31,10 @@ class TranslationDataset(Dataset):
     def __getitem__(self, idx):
         src_text, tgt_text = self.src_text[idx], self.tgt_text[idx]
 
-        # Manually add the <s> token at the beginning of the source and target texts
-        # Tokenizer already adds the EOS token at the end
+        # Add <s> token at the start of the target text for decoder input
         tgt_text = f"<s> {tgt_text}"
 
-        # Tokenize the source text (English)
+        # Tokenize the source text
         src_encoded = self.tokenizer(
             src_text, 
             max_length=self.max_length, 
@@ -50,7 +43,7 @@ class TranslationDataset(Dataset):
             return_tensors="pt"
         )
         
-        # Tokenize the target text (Spanish)
+        # Tokenize the target text
         tgt_encoded = self.tokenizer(
             tgt_text,
             max_length=self.max_length,
@@ -58,13 +51,20 @@ class TranslationDataset(Dataset):
             truncation=True,
             return_tensors="pt"
         )
-        
+
+        # Ensure tensors are squeezed correctly
+        input_ids = src_encoded["input_ids"].squeeze(0)
+        attention_mask = src_encoded["attention_mask"].squeeze(0)
+        decoder_input_ids = tgt_encoded["input_ids"].squeeze(0)[:-1]
+        labels = tgt_encoded["input_ids"].squeeze(0)[1:]
+
         return {
-            "input_ids": src_encoded["input_ids"].squeeze(),
-            "attention_mask": src_encoded["attention_mask"].squeeze(),
-            "decoder_input_ids": tgt_encoded["input_ids"].squeeze()[:-1],
-            "labels": tgt_encoded["input_ids"].squeeze()[1:]
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "decoder_input_ids": decoder_input_ids,
+            "labels": labels
         }
+
 
 def get_tokenizer():
     tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-es")
@@ -103,6 +103,7 @@ def get_dataloader(dataset):
     return DataLoader(
         dataset, batch_size=16, shuffle=True, collate_fn=collate_fn
     )
+
 
 def train_loop(transformer, dataloader, criterion, optimizer, device="cpu"):
     running_loss = 0
@@ -175,17 +176,18 @@ train_dataset, val_dataset = get_dataset(tokenizer)
 train_dataloader = get_dataloader(train_dataset)
 val_dataloader = get_dataloader(val_dataset)
 
+
 src_vocab_size = tokenizer.vocab_size + 1
 tgt_vocab_size = tokenizer.vocab_size + 1
 pad_token = tokenizer.encode("<pad>")[0]
-embed_dim = 512
-n_heads = 8
-num_encoder_layers = 6
-num_decoder_layers = 6
+embed_dim = 256
+n_heads = 4
+num_encoder_layers = 4
+num_decoder_layers = 4
 dim_feedforward = 2048
 max_len = 500
 dropout = 0.1
-epochs = 10
+epochs = 2
 
 transformer = Transformer(
     src_vocab_size=src_vocab_size, tgt_vocab_size=tgt_vocab_size,
@@ -205,6 +207,7 @@ for epoch in range(epochs):
     transformer.train()
     train_loss = train_loop(transformer, train_dataloader, criterion, optimizer, "cuda")
     print(f"EPOCH {epoch + 1} Train Loss", train_loss)
+    transformer.eval()
     val_loss = val_loop(transformer, val_dataloader, criterion, "cuda")
     print(f"EPOCH {epoch + 1} Val Loss", val_loss)
 
