@@ -61,11 +61,11 @@ def get_tokenizer():
     tokenizer.add_special_tokens({"bos_token": "<s>"})
     return tokenizer
 
-
-src = os.path.expanduser("~/datasets/en_to_esp/tatobeta/train_en.txt")
-tgt = os.path.expanduser("~/datasets/en_to_esp/tatobeta/train_es.txt")
-tokenizer = get_tokenizer()
-train_dataset = TranslationDataset(src, tgt, tokenizer)
-
-tokenizer.decode(train_dataset[0]["input_ids"])
-tokenizer.decode(train_dataset[0]["labels"])
+if __name__ == "__main__":
+    src = os.path.expanduser("~/datasets/en_to_esp/tatobeta/train_en.txt")
+    tgt = os.path.expanduser("~/datasets/en_to_esp/tatobeta/train_es.txt")
+    tokenizer = get_tokenizer()
+    train_dataset = TranslationDataset(src, tgt, tokenizer)
+    
+    tokenizer.decode(train_dataset[0]["input_ids"])
+    tokenizer.decode(train_dataset[0]["labels"])

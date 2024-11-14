@@ -14,29 +14,32 @@ from src.tfrmrs.transformer import (
 
 
 class TranslationDataset(Dataset):
-    def __init__(self, path_to_en, path_to_es, tokenizer, max_length=64):
-        self.english = []
-        with open(path_to_en) as f:
+    def __init__(self, path_to_src, path_to_tgt, tokenizer, max_length=250):
+        self.src_text = []
+        with open(path_to_src) as f:
             for line in f.readlines():
-                self.english.append(line.strip())
+                self.src_text.append(line.strip())
 
-        self.spanish = []
-        with open(path_to_es) as f:
+        self.tgt_text = []
+        with open(path_to_tgt) as f:
             for line in f.readlines():
-                self.spanish.append(line.strip())
+                self.tgt_text.append(line.strip())
+
+        if not len(self.src_text) == len(self.tgt_text):
+            raise Exception("len of src not the same as tgt")
 
         self.tokenizer = tokenizer
         self.max_length = max_length
     
     def __len__(self):
-        return len(self.english)
+        return len(self.src_text)
 
     def __getitem__(self, idx):
-        src_text = self.df.iloc[idx, 0]  # English text (source)
-        tgt_text = self.df.iloc[idx, 1]  # Spanish text (target)
+        src_text, tgt_text = self.src_text[idx], self.tgt_text[idx]
 
         # Manually add the <s> token at the beginning of the source and target texts
-        tgt_text = f"<s> {tgt_text}"  # Prepend <s> and append </s> to the target text
+        # Tokenizer already adds the EOS token at the end
+        tgt_text = f"<s> {tgt_text}"
 
         # Tokenize the source text (English)
         src_encoded = self.tokenizer(
@@ -69,11 +72,14 @@ def get_tokenizer():
     return tokenizer
 
 def get_dataset(tokenizer):
-    path_to_df = os.path.expanduser("~/datasets/en_to_esp/data.csv")
-    dataset = TranslationDataset(path_to_df=path_to_df, 
-                                 tokenizer=tokenizer, 
-                                 max_length=64)
-    return dataset
+    train_src = os.path.expanduser("~/datasets/en_to_esp/tatobeta/train_en.txt")
+    train_tgt = os.path.expanduser("~/datasets/en_to_esp/tatobeta/train_es.txt")
+    val_src = os.path.expanduser("~/datasets/en_to_esp/tatobeta/val_en.txt")
+    val_tgt = os.path.expanduser("~/datasets/en_to_esp/tatobeta/val_es.txt")
+    tokenizer = get_tokenizer()
+    train_dataset = TranslationDataset(train_src, train_tgt, tokenizer)
+    val_dataset = TranslationDataset(val_src, val_tgt, tokenizer)
+    return train_dataset, val_dataset 
 
 def get_dataloader(dataset):
     def pad(l):
@@ -165,8 +171,9 @@ def val_loop(transformer, dataloader, criterion, device="cpu"):
     return avg_loss
 
 tokenizer = get_tokenizer()
-dataset = get_dataset(tokenizer)
-dataloader = get_dataloader(dataset)
+train_dataset, val_dataset = get_dataset(tokenizer)
+train_dataloader = get_dataloader(train_dataset)
+val_dataloader = get_dataloader(val_dataset)
 
 src_vocab_size = tokenizer.vocab_size + 1
 tgt_vocab_size = tokenizer.vocab_size + 1
@@ -181,8 +188,10 @@ dropout = 0.1
 epochs = 10
 
 transformer = Transformer(
-    src_vocab_size, tgt_vocab_size, embed_dim, n_heads, num_encoder_layers,
-    num_decoder_layers, dim_feedforward, max_len, dropout
+    src_vocab_size=src_vocab_size, tgt_vocab_size=tgt_vocab_size,
+    embed_dim=embed_dim, n_heads=n_heads, num_encoder_layers=num_encoder_layers,
+    num_decoder_layers=num_decoder_layers, dim_feedforward=dim_feedforward, 
+    max_len=max_len, dropout=dropout
 ).to(0)
 
 def criterion(output, labels):
@@ -194,8 +203,10 @@ optimizer = Adam(transformer.parameters(), lr=1e-4)
 
 for epoch in range(epochs):
     transformer.train()
-    loss = train_loop(transformer, dataloader, criterion, optimizer, "cuda")
-    print(f"EPOCH {epoch + 1} Train Loss", loss)
+    train_loss = train_loop(transformer, train_dataloader, criterion, optimizer, "cuda")
+    print(f"EPOCH {epoch + 1} Train Loss", train_loss)
+    val_loss = val_loop(transformer, val_dataloader, criterion, "cuda")
+    print(f"EPOCH {epoch + 1} Val Loss", val_loss)
 
 tokenizer.decode(
     transformer.inference(
