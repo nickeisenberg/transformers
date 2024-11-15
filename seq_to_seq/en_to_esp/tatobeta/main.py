@@ -65,7 +65,6 @@ class TranslationDataset(Dataset):
             "labels": labels
         }
 
-
 def get_tokenizer():
     tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-es")
     tokenizer.add_special_tokens({"bos_token": "<s>"})
@@ -103,7 +102,6 @@ def get_dataloader(dataset):
     return DataLoader(
         dataset, batch_size=16, shuffle=True, collate_fn=collate_fn
     )
-
 
 def train_loop(transformer, dataloader, criterion, optimizer, device="cpu"):
     running_loss = 0
@@ -175,7 +173,6 @@ tokenizer = get_tokenizer()
 train_dataset, val_dataset = get_dataset(tokenizer)
 train_dataloader = get_dataloader(train_dataset)
 val_dataloader = get_dataloader(val_dataset)
-
 
 src_vocab_size = tokenizer.vocab_size + 1
 tgt_vocab_size = tokenizer.vocab_size + 1
