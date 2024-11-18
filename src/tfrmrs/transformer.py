@@ -11,36 +11,27 @@ class Transformer(nn.Module):
                  dim_feedforward, max_len=5000, dropout=0.1):
         super().__init__()
         
-        # Encoder
         self.encoder = TransformerEncoder(
             vocab_size=src_vocab_size, embed_dim=embed_dim, n_heads=n_heads,
             num_layers=num_encoder_layers, dim_feedforward=dim_feedforward,
             max_len=max_len, dropout=dropout
         )
         
-        # Decoder
         self.decoder = TransformerDecoder(
             tgt_vocab_size, embed_dim, n_heads, num_decoder_layers, 
             dim_feedforward, max_len, dropout
         )
         
-        # Final linear layer that projects decoder's output to the target vocabulary size
         self.fc_out = nn.Linear(embed_dim, tgt_vocab_size)
         
-        # Softmax is typically applied later during inference or training (like using cross-entropy loss)
     
     def forward(self, input_tokens, target_tokens, src_padding_mask=None, src_padding_token=0, 
                 tgt_look_ahead_mask=None):
-        # Encode the source sequence
         encoder_output = self.encoder(
             input_tokens=input_tokens, padding_mask=src_padding_mask, 
             padding_value=src_padding_token
         )
         
-        # Decode the target sequence with attention to the encoder output
-        # decoder_output = self.decoder(
-        #     target_tokens, encoder_output, tgt_look_ahead_mask, tgt_padding_mask
-        # )
         decoder_output = self.decoder(
             target_tokens=target_tokens, encoder_output=encoder_output,
             look_ahead_mask=tgt_look_ahead_mask, padding_mask=src_padding_mask,
@@ -48,7 +39,6 @@ class Transformer(nn.Module):
         )
 
         
-        # Project the decoder's output to the target vocabulary space
         output = self.fc_out(decoder_output)  # Shape: (batch_size, tgt_seq_len, tgt_vocab_size)
         
         return output
