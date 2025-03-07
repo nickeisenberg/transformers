@@ -2,67 +2,70 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.types import Device
+from torch import device
 
 
 class Transformer(nn.Module):
-    def __init__(self, src_vocab_size, tgt_vocab_size, embed_dim, n_heads,
-                 num_encoder_layers, num_decoder_layers, 
+    def __init__(self, src_vocab_size: int, tgt_vocab_size, embed_dim, n_heads,
+                 num_encoder_layers, num_decoder_layers,
                  dim_feedforward, max_len=5000, dropout=0.1):
         super().__init__()
-        
+
         self.encoder = TransformerEncoder(
             vocab_size=src_vocab_size, embed_dim=embed_dim, n_heads=n_heads,
             num_layers=num_encoder_layers, dim_feedforward=dim_feedforward,
             max_len=max_len, dropout=dropout
         )
-        
+
         self.decoder = TransformerDecoder(
-            tgt_vocab_size, embed_dim, n_heads, num_decoder_layers, 
+            tgt_vocab_size, embed_dim, n_heads, num_decoder_layers,
             dim_feedforward, max_len, dropout
         )
-        
+
         self.fc_out = nn.Linear(embed_dim, tgt_vocab_size)
-        
-    
-    def forward(self, input_tokens, target_tokens, src_padding_mask=None, src_padding_token=0, 
-                tgt_look_ahead_mask=None):
+
+
+    def forward(self, input_tokens: torch.Tensor,
+                target_tokens: torch.Tensor,
+                src_padding_mask: torch.Tensor | None = None,
+                src_padding_token: float = 0,
+                tgt_look_ahead_mask: torch.Tensor | None = None):
         encoder_output = self.encoder(
-            input_tokens=input_tokens, padding_mask=src_padding_mask, 
+            input_tokens=input_tokens, padding_mask=src_padding_mask,
             padding_value=src_padding_token
         )
-        
+
         decoder_output = self.decoder(
             target_tokens=target_tokens, encoder_output=encoder_output,
             look_ahead_mask=tgt_look_ahead_mask, padding_mask=src_padding_mask,
             padding_value=src_padding_token
         )
 
-        
+
         output = self.fc_out(decoder_output)  # Shape: (batch_size, tgt_seq_len, tgt_vocab_size)
-        
+
         return output
 
 
     def inference(self, input_tokens, max_len, sos_token, eos_token, src_padding_mask=None):
         """
         Inference method that generates the target sequence autoregressively.
-        
+
         Args:
             input_tokens: (batch_size, src_seq_len) Source sequence.
             max_len: Maximum length of the generated sequence.
             sos_token: The start-of-sequence token (special token to begin the generation).
             eos_token: The end-of-sequence token (special token to end the generation).
             src_padding_mask: Optional padding mask for the source.
-        
+
         Returns:
             Generated target sequence of shape (batch_size, generated_seq_len).
         """
-    
+
         device = input_tokens.device
 
         # Step 1: Encode the source sequence
-        encoder_output = self.encoder(input_tokens=input_tokens, 
+        encoder_output = self.encoder(input_tokens=input_tokens,
                                       padding_mask=src_padding_mask)
 
         # Step 2: Initialize the target sequence with the <SOS> token
@@ -80,13 +83,13 @@ class Transformer(nn.Module):
 
             # Step 5: Decode using the current target sequence
             decoder_output = self.decoder(
-                target_tokens=tgt_tokens, encoder_output=encoder_output, 
+                target_tokens=tgt_tokens, encoder_output=encoder_output,
                 look_ahead_mask=tgt_look_ahead_mask
             )
 
             # Step 6: Apply final linear layer to get predictions
             logits = self.fc_out(decoder_output)  # (batch_size, tgt_seq_len, tgt_vocab_size)
-            
+
             # Step 7: Get the last time step's logits and apply softmax to get probabilities
             next_token_logits = logits[:, -1, :]  # (batch_size, tgt_vocab_size)
             next_token = torch.argmax(next_token_logits, dim=-1).unsqueeze(1)  # (batch_size, 1)
@@ -102,7 +105,7 @@ class Transformer(nn.Module):
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads, dropout=0.1):
+    def __init__(self, embed_dim: int, num_heads: int, dropout: float = 0.1):
         super().__init__()
 
         if not embed_dim % num_heads == 0:
@@ -111,21 +114,21 @@ class SelfAttention(nn.Module):
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads  # Dimension of each attention head
-        
+
         # Linear layers for query, key, and value projections
         self.q_proj = nn.Linear(embed_dim, embed_dim)
         self.k_proj = nn.Linear(embed_dim, embed_dim)
         self.v_proj = nn.Linear(embed_dim, embed_dim)
-        
+
         # Final linear layer to combine all the heads' outputs
         self.out_proj = nn.Linear(embed_dim, embed_dim)
-        
+
         # Dropout for regularization
         self.dropout = nn.Dropout(dropout)
-        
+
     def forward(self, query: torch.Tensor, key: torch.Tensor,
-                value: torch.Tensor, 
-                padding_mask: torch.Tensor | None = None, 
+                value: torch.Tensor,
+                padding_mask: torch.Tensor | None = None,
                 padding_value: int | float = 0):
         # batch_size = query.size(0)
         batch_size, seq_len_q, _ = query.size()
@@ -149,25 +152,25 @@ class SelfAttention(nn.Module):
         V = V.view(
             batch_size, seq_len_k, self.num_heads, self.head_dim
         ).transpose(1, 2).contiguous()
-        
+
         # Perform scaled dot-product attention for each head, with optional padding mask
         attn_output, attn_weights = self.scaled_dot_product_attention(
             Q, K, V, padding_mask, padding_value
         )
-        
+
         # Concatenate the attention outputs from all heads
         # New shape: (batch_size, seq_len, embed_dim)
         attn_output = attn_output.transpose(1, 2).reshape(
             batch_size, seq_len_q, self.embed_dim
         ).contiguous()
-        
+
         # Apply the final linear layer to combine the outputs from all heads
         output = self.out_proj(attn_output)
-        
+
         return output, attn_weights
 
-    def scaled_dot_product_attention(self, query: torch.Tensor, key: torch.Tensor, 
-                                     value: torch.Tensor, 
+    def scaled_dot_product_attention(self, query: torch.Tensor, key: torch.Tensor,
+                                     value: torch.Tensor,
                                      padding_mask: torch.Tensor | None = None,
                                      padding_value: float | int = 0):
         # Compute the attention scores
@@ -183,18 +186,18 @@ class SelfAttention(nn.Module):
 
         # Apply softmax to get attention weights
         attn_weights = F.softmax(attn_scores, dim=-1)
-        
+
         # Apply dropout to the attention weights
         attn_weights = self.dropout(attn_weights)
-        
+
         # Compute the weighted sum of the values
         attn_output = torch.matmul(attn_weights, value)
-        
+
         return attn_output, attn_weights
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, embed_dim, max_len=5000):
+    def __init__(self, embed_dim: int, max_len: int = 5000):
         super().__init__()
 
         # Create a matrix of shape (max_len, embed_dim) for positional encodings
@@ -223,54 +226,49 @@ class PositionalEncoding(nn.Module):
 
 
 class TransformerEncoderBlock(nn.Module):
-    def __init__(self, embed_dim, n_heads, dim_feedforward, dropout=0.1):
+    def __init__(self, embed_dim: int, n_heads: int, dim_feedforward: int, 
+                 dropout: float = 0.1):
         super().__init__()
-        
-        # Self-attention layer (with mask)
+
         self.self_attention = SelfAttention(embed_dim, n_heads)
 
-        # Layer normalization
         self.norm1 = nn.LayerNorm(embed_dim)
         self.norm2 = nn.LayerNorm(embed_dim)
 
-        # Feed-forward network
         self.feed_forward = nn.Sequential(
             nn.Linear(embed_dim, dim_feedforward),
             nn.ReLU(),
             nn.Linear(dim_feedforward, embed_dim)
         )
 
-        # Dropout layer
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, padding_mask=None, padding_value=0):
-        # Step 1: Self-attention layer with residual connection and layer normalization
-        # attn_output.shape() = (batch_size, seq_len, embed_dim)
-        attn_output, _ = self.self_attention(x, x, x, padding_mask, padding_value)  
+    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor | None = None,
+                padding_value: float = 0):
+        attn_output, _ = self.self_attention(
+            x, x, x, padding_mask, padding_value
+        )
         x = self.norm1(x + self.dropout(attn_output))
-
-        # Step 2: Feed-forward network with residual connection and layer normalization
-        ff_output = self.feed_forward(x)  # (batch_size, seq_len, embed_dim)
+        ff_output = self.feed_forward(x)
         x = self.norm2(x + self.dropout(ff_output))
-
         return x
 
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, vocab_size, embed_dim, n_heads, num_layers, 
+    def __init__(self, vocab_size, embed_dim, n_heads, num_layers,
                  dim_feedforward, max_len=5000, dropout=0.1):
         super().__init__()
 
         # Embedding layer for input tokens
         self.embedding = nn.Embedding(vocab_size, embed_dim)
-        
+
         # Positional encoding layer
         self.positional_encoding = PositionalEncoding(embed_dim, max_len)
 
         # Transformer encoder blocks (stack of layers)
         self.layers = nn.ModuleList(
             [
-                TransformerEncoderBlock(embed_dim, n_heads, dim_feedforward, dropout) 
+                TransformerEncoderBlock(embed_dim, n_heads, dim_feedforward, dropout)
                 for _ in range(num_layers)
             ]
         )
@@ -296,98 +294,79 @@ class TransformerEncoder(nn.Module):
 
 
 class TransformerDecoderBlock(nn.Module):
-    def __init__(self, embed_dim, n_heads, dim_feedforward, dropout=0.1):
+    def __init__(self, embed_dim: int, n_heads: int, dim_feedforward: int,
+                 dropout: float = 0.1):
         super().__init__()
-        # Masked self-attention for the decoder
         self.self_attention = SelfAttention(embed_dim, n_heads)
-        # Cross-attention (encoder-decoder attention)
         self.cross_attention = SelfAttention(embed_dim, n_heads)
-        # Feed-forward network
         self.feed_forward = nn.Sequential(
             nn.Linear(embed_dim, dim_feedforward),
             nn.ReLU(),
             nn.Linear(dim_feedforward, embed_dim)
         )
-        # Layer normalization
         self.norm1 = nn.LayerNorm(embed_dim)
         self.norm2 = nn.LayerNorm(embed_dim)
         self.norm3 = nn.LayerNorm(embed_dim)
-        # Dropout layer
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, encoder_output, look_ahead_mask=None, 
-                padding_mask=None, padding_value=0):
-        # Step 1: Masked self-attention with residual connection and layer normalization
-        attn_output, _ = self.self_attention(x, x, x, look_ahead_mask)  
+    def forward(self, x: torch.Tensor, encoder_output: torch.Tensor,
+                look_ahead_mask: torch. Tensor | None = None,
+                padding_mask: torch. Tensor | None =None,
+                padding_value: float = 0):
+        attn_output, _ = self.self_attention(x, x, x, look_ahead_mask)
         x = self.norm1(x + self.dropout(attn_output))
-
-        # Step 2: Cross-attention with residual connection and layer normalization
         cross_attn_output, _ = self.cross_attention(
-            query=x, key=encoder_output, value=encoder_output, 
+            query=x, key=encoder_output, value=encoder_output,
             padding_mask=padding_mask, padding_value=padding_value
         )
         x = self.norm2(x + self.dropout(cross_attn_output))
-
-        # Step 3: Feed-forward network with residual connection and layer normalization
-        ff_output = self.feed_forward(x)  
+        ff_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(ff_output))
-
         return x
 
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, vocab_size, embed_dim, n_heads, num_layers, 
-                 dim_feedforward, max_len=5000, dropout=0.1):
+    def __init__(self, vocab_size: int, embed_dim: int, n_heads: int,
+                 num_layers: int, dim_feedforward: int, max_len: int = 5000,
+                 dropout: float = 0.1):
         super().__init__()
 
-        # Embedding layer for input tokens (target sequence)
         self.embedding = nn.Embedding(vocab_size, embed_dim)
-        
-        # Positional encoding for target sequences
         self.positional_encoding = PositionalEncoding(embed_dim, max_len)
-
-        # Stack of decoder layers
         self.layers = nn.ModuleList(
             [
-                TransformerDecoderBlock(embed_dim, n_heads, dim_feedforward, dropout) 
+                TransformerDecoderBlock(embed_dim, n_heads, dim_feedforward, dropout)
                 for _ in range(num_layers)
             ]
         )
-
-        # Dropout after embedding + positional encoding
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, target_tokens, encoder_output, look_ahead_mask=None, 
-                padding_mask=None, padding_value=0):
-        # Step 1: Embed the target tokens
+    def forward(self, target_tokens: torch.Tensor,
+                encoder_output: torch.Tensor,
+                look_ahead_mask: torch.Tensor | None = None,
+                padding_mask: torch.Tensor | None = None,
+                padding_value:float = 0):
         x = self.embedding(target_tokens)  # (batch_size, seq_len, embed_dim)
-
-        # Step 2: Add positional encoding
         x = self.positional_encoding(x)
-
-        # Step 3: Apply dropout
         x = self.dropout(x)
-
-        # Step 4: Pass through each decoder block
         for layer in self.layers:
             x = layer(x, encoder_output=encoder_output,
                       look_ahead_mask=look_ahead_mask,
                       padding_mask=padding_mask, padding_value=padding_value)
-
         return x
 
 
 def create_padding_mask(input_tokens, pad_token=0):
     """input_tokens: shape (batch_size, seq_len)"""
     # mask.shape() = (batch_size, 1, 1, seq_len)
-    mask = (input_tokens != pad_token).unsqueeze(1).unsqueeze(2)  
+    mask = (input_tokens != pad_token).unsqueeze(1).unsqueeze(2)
     return mask
 
 
-def create_look_ahead_mask(seq_len: int, device: int | str | Device = "cpu"):
+def create_look_ahead_mask(seq_len: int, device: int | str | device = "cpu"):
     """Create a mask where each position i can only attend to positions <= i"""
     # mase.shape() = (1, 1, seq_len, seq_len)
-    mask = torch.tril(torch.ones((seq_len, seq_len))).unsqueeze(0).unsqueeze(0) 
+    mask = torch.tril(torch.ones((seq_len, seq_len))).unsqueeze(0).unsqueeze(0)
     return mask.to(device)
 
 
@@ -402,17 +381,17 @@ if __name__ == "__main__":
     dim_feedforward = 2048    # Feedforward network size
     max_len = 500            # Maximum sequence length
     dropout = 0.1            # Dropout rate
-    
+
     # Create dummy input and target sequences
     batch_size = 32
     input_tokens = torch.randint(0, src_vocab_size, (batch_size, 25))
     target_tokens = torch.randint(0, tgt_vocab_size, (batch_size, 30))
-    
+
     # Create padding masks (assuming no padding here; using all ones)
     # Create look-ahead mask for the target sequence
-    src_padding_mask = create_padding_mask(input_tokens)  
+    src_padding_mask = create_padding_mask(input_tokens
     tgt_look_ahead_mask = create_look_ahead_mask(target_tokens.size(1))
-    
+
     #--------------------------------------------------
     # Transfomer piece by piece
     #--------------------------------------------------
@@ -425,11 +404,11 @@ if __name__ == "__main__":
         input_tokens=input_tokens, padding_mask=src_padding_mask, padding_value=0
     )
     encoder_output.shape
-    
+
     # decoder
     decoder = TransformerDecoder(
-        vocab_size=tgt_vocab_size, embed_dim=embed_dim, n_heads=n_heads, 
-        num_layers=num_decoder_layers, dim_feedforward=dim_feedforward, 
+        vocab_size=tgt_vocab_size, embed_dim=embed_dim, n_heads=n_heads,
+        num_layers=num_decoder_layers, dim_feedforward=dim_feedforward,
         max_len=max_len, dropout=dropout
     )
     decoder_output = decoder(
@@ -438,13 +417,12 @@ if __name__ == "__main__":
         padding_value=0
     )
     decoder_output.shape
-    
+
     #fc output layer
     fc = nn.Linear(embed_dim, tgt_vocab_size)
     fc_output = fc(decoder_output)
     fc_output.shape
-    
-    
+
     #--------------------------------------------------
     # Transfomer model
     #--------------------------------------------------
@@ -453,11 +431,11 @@ if __name__ == "__main__":
         src_vocab_size, tgt_vocab_size, embed_dim, n_heads, num_encoder_layers,
         num_decoder_layers, dim_feedforward, max_len, dropout
     )
-    
+
     output = transformer(
         input_tokens=input_tokens, target_tokens=target_tokens,
         src_padding_mask=src_padding_mask,
         tgt_look_ahead_mask=tgt_look_ahead_mask
     )
     # Expected shape: (batch_size, tgt_seq_len, tgt_vocab_size)
-    print("Output shape:", output.shape)  
+    print("Output shape:", output.shape)
