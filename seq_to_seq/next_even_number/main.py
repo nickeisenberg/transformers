@@ -1,80 +1,14 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import random
-from src.tfrmrs.transformer import (
-    Transformer,
-    create_padding_mask,
-    create_look_ahead_mask
+
+from seq_to_seq.next_even_number.src.train import (
+    train_one_epoch
 )
 
-
-def generate_even_data(sos_token, eos_token):
-    x = random.randint(0, 100)
-    if x % 2 == 0:
-        x = x
-    else:
-        x = x + 1
-    
-    src = [x]
-    trg = [sos_token]  # Start with <SOS> token
-    for _ in range(4):
-        src.append(src[-1] + 2)
-        trg.append(src[-2] + 2)
-    trg.append(src[-1] + 2)
-    trg.append(eos_token)  # End with <EOS> token
-
-    return src, trg
-
-
-def create_batch(batch_size=32, sos_token=-5, eos_token=-1):
-    src_batch = []
-    tgt_batch = []
-    for _ in range(batch_size):
-        src_seq, tgt_seq = generate_even_data(sos_token, eos_token)
-        src_batch.append(src_seq)
-        tgt_batch.append(tgt_seq)
-    
-    src_batch = torch.tensor(src_batch, dtype=torch.long).to(device)
-    tgt_batch = torch.tensor(tgt_batch, dtype=torch.long).to(device)
-    return src_batch, tgt_batch
-
-
-def train_one_epoch(model, criterion, optimizer, epoch):
-    _ = model.train()
-    
-    # Generate a batch of data
-    src, tgt = create_batch(batch_size=32, sos_token=sos_token, eos_token=eos_token)
-    
-    # Create tgt_input and tgt_output
-    tgt_input = tgt[:, :-1]  # Remove <EOS> token
-    tgt_output = tgt[:, 1:]  # Shift by one, so we predict <EOS>
-
-    # Create masks
-    src_padding_mask = create_padding_mask(src)
-    tgt_look_ahead_mask = create_look_ahead_mask(tgt_input.size(1), device)
-    
-    # Forward pass
-    output = model(
-        input_tokens=src, target_tokens=tgt_input,
-        src_padding_mask=src_padding_mask,
-        tgt_look_ahead_mask=tgt_look_ahead_mask
-    )
-    
-    # Reshape output and target for cross-entropy loss
-    output = output.reshape(-1, tgt_vocab_size)
-    tgt_output = tgt_output.reshape(-1)
-
-    # Compute loss
-    loss = criterion(output, tgt_output)
-
-    # Backpropagation and optimization
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-    if (epoch + 1) % 20 == 0:
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
+from src.tfrmrs.transformer import (
+    Transformer,
+)
 
 
 # Hyperparameters
