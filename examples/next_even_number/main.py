@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from seq_to_seq.next_even_number.src.train import (
+from examples.next_even_number.src.train import (
     train_one_epoch
 )
 

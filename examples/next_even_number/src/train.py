@@ -3,7 +3,7 @@ from src.tfrmrs.transformer import (
     create_look_ahead_mask
 )
 
-from seq_to_seq.next_even_number.src.data import (
+from examples.next_even_number.src.data import (
     create_batch,
 )
 

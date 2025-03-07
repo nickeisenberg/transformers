@@ -1,9 +1,5 @@
 import torch
 import random
-from src.tfrmrs.transformer import (
-    create_padding_mask,
-    create_look_ahead_mask
-)
 
 
 def generate_even_data(sos_token, eos_token):
