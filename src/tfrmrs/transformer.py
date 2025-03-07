@@ -123,7 +123,10 @@ class SelfAttention(nn.Module):
         # Dropout for regularization
         self.dropout = nn.Dropout(dropout)
         
-    def forward(self, query, key, value, padding_mask=None, padding_value=0):
+    def forward(self, query: torch.Tensor, key: torch.Tensor,
+                value: torch.Tensor, 
+                padding_mask: torch.Tensor | None = None, 
+                padding_value: int | float = 0):
         # batch_size = query.size(0)
         batch_size, seq_len_q, _ = query.size()
         seq_len_k = key.size(1)  # Sequence length for K (which could differ from Q)
@@ -156,15 +159,17 @@ class SelfAttention(nn.Module):
         # New shape: (batch_size, seq_len, embed_dim)
         attn_output = attn_output.transpose(1, 2).reshape(
             batch_size, seq_len_q, self.embed_dim
-        )
+        ).contiguous()
         
         # Apply the final linear layer to combine the outputs from all heads
         output = self.out_proj(attn_output)
         
         return output, attn_weights
 
-    def scaled_dot_product_attention(self, query, key, value, padding_mask=None,
-                                     padding_value=0):
+    def scaled_dot_product_attention(self, query: torch.Tensor, key: torch.Tensor, 
+                                     value: torch.Tensor, 
+                                     padding_mask: torch.Tensor | None = None,
+                                     padding_value: float | int = 0):
         # Compute the attention scores
         # (batch_size, num_heads, seq_len, seq_len)
         attn_scores = torch.matmul(query, key.transpose(-2, -1))
@@ -193,24 +198,28 @@ class PositionalEncoding(nn.Module):
         super().__init__()
 
         # Create a matrix of shape (max_len, embed_dim) for positional encodings
-        pe = torch.zeros(max_len, embed_dim)
+        pe = torch.zeros(max_len, embed_dim)  # This should not be self.pe yet
+
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(
             torch.arange(0, embed_dim, 2).float() * (-math.log(10000.0) / embed_dim)
         )
 
-        # Apply sin to even indices and cos to odd indices
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
 
-        # Add a batch dimension
         pe = pe.unsqueeze(0)  # Shape: (1, max_len, embed_dim)
+
+        # Now register it as a buffer
         self.register_buffer('pe', pe)
 
-    def forward(self, x):
-        # Add positional encoding to the input embeddings
-        x = x + self.pe[:, :x.size(1), :].clone().detach()
-        return x
+
+    def forward(self, x: torch.Tensor):
+        if isinstance(self.pe, torch.Tensor):
+            x = x + self.pe[:, :x.size(1), :]
+            return x
+        else:
+            raise Exception("pe is not a Tensor")
 
 
 class TransformerEncoderBlock(nn.Module):
@@ -375,7 +384,7 @@ def create_padding_mask(input_tokens, pad_token=0):
     return mask
 
 
-def create_look_ahead_mask(seq_len, device: int | str | Device = "cpu"):
+def create_look_ahead_mask(seq_len: int, device: int | str | Device = "cpu"):
     """Create a mask where each position i can only attend to positions <= i"""
     # mase.shape() = (1, 1, seq_len, seq_len)
     mask = torch.tril(torch.ones((seq_len, seq_len))).unsqueeze(0).unsqueeze(0) 
