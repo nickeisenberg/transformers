@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.optim as optim
 import random
 from src.tfrmrs.transformer import (
-    Transformer, 
-    create_padding_mask, 
+    Transformer,
+    create_padding_mask,
     create_look_ahead_mask
 )
 
