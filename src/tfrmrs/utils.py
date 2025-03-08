@@ -25,3 +25,12 @@ def create_look_ahead_mask(seq_len: int, device: int | str | device = "cpu"):
     # mase.shape() = (1, 1, seq_len, seq_len)
     mask = torch.tril(torch.ones((seq_len, seq_len))).unsqueeze(0).unsqueeze(0)
     return mask.to(device)
+
+
+if __name__ == "__main__":
+    pass
+
+    batch = fake_batch_of_src_tokens(4, 10, 32, 999)
+    print(batch)  
+    create_padding_mask(batch, 999)
+    create_look_ahead_mask(10)

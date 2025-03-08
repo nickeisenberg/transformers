@@ -33,17 +33,18 @@ class Transformer(nn.Module):
     def forward(self, input_tokens: torch.Tensor,
                 target_tokens: torch.Tensor,
                 src_padding_mask: torch.Tensor | None = None,
-                src_padding_token: float = 0,
-                tgt_look_ahead_mask: torch.Tensor | None = None):
+                tgt_look_ahead_mask: torch.Tensor | None = None,
+                tgt_padding_mask: torch.Tensor | None = None):
         encoder_output = self.encoder(
-            input_tokens=input_tokens, padding_mask=src_padding_mask,
-            padding_value=src_padding_token
+            input_tokens=input_tokens, 
+            padding_mask=src_padding_mask,
         )
 
         decoder_output = self.decoder(
-            target_tokens=target_tokens, encoder_output=encoder_output,
-            look_ahead_mask=tgt_look_ahead_mask, padding_mask=src_padding_mask,
-            padding_value=src_padding_token
+            target_tokens=target_tokens, 
+            encoder_output=encoder_output,
+            look_ahead_mask=tgt_look_ahead_mask, 
+            padding_mask=tgt_padding_mask,
         )
 
         #output shape: (batch_size, tgt_seq_len, tgt_vocab_size)
@@ -131,8 +132,7 @@ class SelfAttention(nn.Module):
 
     def forward(self, query: torch.Tensor, key: torch.Tensor,
                 value: torch.Tensor,
-                padding_mask: torch.Tensor | None = None,
-                padding_value: int | float = 0):
+                padding_mask: torch.Tensor | None = None):
         # batch_size = query.size(0)
         batch_size, seq_len_q, _ = query.size()
         seq_len_k = key.size(1)  # Sequence length for K (which could differ from Q)
@@ -142,7 +142,6 @@ class SelfAttention(nn.Module):
         K = self.k_proj(key)    # (batch_size, seq_len, embed_dim)
         V = self.v_proj(value)  # (batch_size, seq_len, embed_dim)
 
-        # Reshape for multi-head attention (split into multiple heads)
         # New shape: (batch_size, num_heads, seq_len, head_dim)
         Q = Q.view(
             batch_size, seq_len_q, self.num_heads, self.head_dim
@@ -156,27 +155,23 @@ class SelfAttention(nn.Module):
             batch_size, seq_len_k, self.num_heads, self.head_dim
         ).transpose(1, 2).contiguous()
 
-        # Perform scaled dot-product attention for each head, with optional padding mask
+        # shape: (batch_size, num_heads, seq_len, head_dim)
         attn_output, attn_weights = self.scaled_dot_product_attention(
-            Q, K, V, padding_mask, padding_value
+            Q, K, V, padding_mask
         )
 
-        # Concatenate the attention outputs from all heads
         # New shape: (batch_size, seq_len, embed_dim)
         attn_output = attn_output.transpose(1, 2).reshape(
             batch_size, seq_len_q, self.embed_dim
         ).contiguous()
 
-        # Apply the final linear layer to combine the outputs from all heads
         output = self.out_proj(attn_output)
-
         return output, attn_weights
 
-    def scaled_dot_product_attention(self, query: torch.Tensor, key: torch.Tensor,
+    def scaled_dot_product_attention(self, query: torch.Tensor, 
+                                     key: torch.Tensor,
                                      value: torch.Tensor,
-                                     padding_mask: torch.Tensor | None = None,
-                                     padding_value: float | int = 0):
-        # Compute the attention scores
+                                     padding_mask: torch.Tensor | None = None):
         # (batch_size, num_heads, seq_len, seq_len)
         attn_scores = torch.matmul(query, key.transpose(-2, -1))
         attn_scores /= torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float32))
@@ -184,7 +179,7 @@ class SelfAttention(nn.Module):
         # Apply the padding mask if provided
         if padding_mask is not None:
             attn_scores = attn_scores.masked_fill(
-                padding_mask == padding_value, float('-inf')
+                padding_mask == 0, float('-inf')
             )
 
         # Apply softmax to get attention weights
@@ -246,10 +241,10 @@ class TransformerEncoderBlock(nn.Module):
         
         self.dropout = nn.Dropout(dropout) if dropout else None
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor | None = None,
-                padding_value: float = 0):
+    def forward(self, x: torch.Tensor,
+                padding_mask: torch.Tensor | None = None):
         attn_output, _ = self.self_attention(
-            x, x, x, padding_mask, padding_value
+            x, x, x, padding_mask
         )
         x += self.dropout(attn_output) if self.dropout else attn_output
         x = self.norm1(x)
@@ -275,12 +270,12 @@ class TransformerEncoder(nn.Module):
         )
         self.dropout = nn.Dropout(dropout) if dropout else None
 
-    def forward(self, input_tokens, padding_mask=None, padding_value=0):
+    def forward(self, input_tokens, padding_mask=None):
         x = self.embedding(input_tokens)  # (batch_size, seq_len, embed_dim)
         x = self.positional_encoding(x)
         x = self.dropout(x) if self.dropout else x
         for layer in self.layers:
-            x = layer(x, padding_mask=padding_mask, padding_value=padding_value)
+            x = layer(x, padding_mask=padding_mask)
         return x
 
 
@@ -300,19 +295,35 @@ class TransformerDecoderBlock(nn.Module):
         self.norm3 = nn.LayerNorm(embed_dim)
         self.dropout = nn.Dropout(dropout) if dropout else None
 
-    def forward(self, x: torch.Tensor, encoder_output: torch.Tensor,
+    def forward(self, tgt_embeded_tokens: torch.Tensor, 
+                encoder_output: torch.Tensor,
                 look_ahead_mask: torch. Tensor | None = None,
-                padding_mask: torch. Tensor | None =None,
-                padding_value: float = 0):
-        attn_output, _ = self.self_attention(x, x, x, look_ahead_mask)
-        x += self.dropout(attn_output) if self.dropout else attn_output
-        x = self.norm1(x)
+                padding_mask: torch. Tensor | None =None):
+
+        if look_ahead_mask is not None and padding_mask is not None:
+            attn_mask = padding_mask + look_ahead_mask
+        else:
+            attn_mask = None
+
+        attn_output, _ = self.self_attention(
+            tgt_embeded_tokens,
+            tgt_embeded_tokens,
+            tgt_embeded_tokens,
+            attn_mask
+        )
+        tgt_embeded_tokens += self.dropout(attn_output) if self.dropout else attn_output
+
+        x = self.norm1(tgt_embeded_tokens)
+
         cross_attn_output, _ = self.cross_attention(
-            query=x, key=encoder_output, value=encoder_output,
-            padding_mask=padding_mask, padding_value=padding_value
+            query=x, 
+            key=encoder_output, 
+            value=encoder_output,
+            padding_mask=padding_mask, 
         )
         x += self.dropout(cross_attn_output) if self.dropout else cross_attn_output 
         x = self.norm2(x)
+
         ff_output = self.feed_forward(x)
         x += self.dropout(ff_output) if self.dropout else ff_output
         x = self.norm3(x)
@@ -338,84 +349,12 @@ class TransformerDecoder(nn.Module):
     def forward(self, target_tokens: torch.Tensor,
                 encoder_output: torch.Tensor,
                 look_ahead_mask: torch.Tensor | None = None,
-                padding_mask: torch.Tensor | None = None,
-                padding_value:float = 0):
+                padding_mask: torch.Tensor | None = None):
         x = self.embedding(target_tokens)  # (batch_size, seq_len, embed_dim)
         x = self.positional_encoding(x)
         x = self.dropout(x) if self.dropout else x
         for layer in self.layers:
             x = layer(x, encoder_output=encoder_output,
                       look_ahead_mask=look_ahead_mask,
-                      padding_mask=padding_mask, padding_value=padding_value)
+                      padding_mask=padding_mask)
         return x
-
-
-if __name__ == "__main__":
-    # Define the parameters
-    src_vocab_size = 10000  # Source vocabulary size
-    tgt_vocab_size = 10000  # Target vocabulary size
-    embed_dim = 512            # Embedding size
-    num_heads = 8              # Number of attention heads
-    num_encoder_layers = 6   # Number of encoder layers
-    num_decoder_layers = 6   # Number of decoder layers
-    dim_feedforward = 2048    # Feedforward network size
-    max_len = 500            # Maximum sequence length
-    dropout = 0.1            # Dropout rate
-
-    # Create dummy input and target sequences
-    batch_size = 32
-    input_tokens = torch.randint(0, src_vocab_size, (batch_size, 25))
-    target_tokens = torch.randint(0, tgt_vocab_size, (batch_size, 30))
-
-    # Create padding masks (assuming no padding here; using all ones)
-    # Create look-ahead mask for the target sequence
-    src_padding_mask = create_padding_mask(input_tokens)
-    tgt_look_ahead_mask = create_look_ahead_mask(target_tokens.size(1))
-
-    #--------------------------------------------------
-    # Transfomer piece by piece
-    #--------------------------------------------------
-    encoder = TransformerEncoder(
-        vocab_size=src_vocab_size, embed_dim=embed_dim, num_heads=num_heads,
-        num_layers=num_encoder_layers, dim_feedforward=dim_feedforward,
-        max_len=max_len
-    )
-    encoder_output = encoder(
-        input_tokens=input_tokens, padding_mask=src_padding_mask, padding_value=0
-    )
-    encoder_output.shape
-
-    # decoder
-    decoder = TransformerDecoder(
-        vocab_size=tgt_vocab_size, embed_dim=embed_dim, num_heads=num_heads,
-        num_layers=num_decoder_layers, dim_feedforward=dim_feedforward,
-        max_len=max_len, dropout=dropout
-    )
-    decoder_output = decoder(
-        target_tokens=target_tokens, encoder_output=encoder_output,
-        look_ahead_mask=tgt_look_ahead_mask, padding_mask=src_padding_mask,
-        padding_value=0
-    )
-    decoder_output.shape
-
-    #fc output layer
-    fc = nn.Linear(embed_dim, tgt_vocab_size)
-    fc_output = fc(decoder_output)
-    fc_output.shape
-
-    #--------------------------------------------------
-    # Transfomer model
-    #--------------------------------------------------
-    # Transformer
-    transformer = Transformer(
-        src_vocab_size, tgt_vocab_size, embed_dim, num_heads, num_encoder_layers,
-        num_decoder_layers, dim_feedforward, max_len, dropout
-    )
-
-    output = transformer(
-        input_tokens=input_tokens, target_tokens=target_tokens,
-        src_padding_mask=src_padding_mask,
-        tgt_look_ahead_mask=tgt_look_ahead_mask
-    )
-    # Expected shape: (batch_size, tgt_seq_len, tgt_vocab_size)
-    print("Output shape:", output.shape)
