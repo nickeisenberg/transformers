@@ -320,7 +320,7 @@ class TransformerDecoderBlock(nn.Module):
 class TransformerDecoder(nn.Module):
     def __init__(self, vocab_size: int, embed_dim: int, num_heads: int,
                  num_layers: int, dim_feedforward: int, max_len: int = 5000,
-                 dropout: float = 0.1):
+                 dropout: float | None  = 0.1):
         super().__init__()
 
         self.embedding = nn.Embedding(vocab_size, embed_dim)
@@ -331,7 +331,7 @@ class TransformerDecoder(nn.Module):
                 for _ in range(num_layers)
             ]
         )
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout) if dropout else None
 
     def forward(self, target_tokens: torch.Tensor,
                 encoder_output: torch.Tensor,
@@ -340,7 +340,7 @@ class TransformerDecoder(nn.Module):
                 padding_value:float = 0):
         x = self.embedding(target_tokens)  # (batch_size, seq_len, embed_dim)
         x = self.positional_encoding(x)
-        x = self.dropout(x)
+        x = self.dropout(x) if self.dropout else x
         for layer in self.layers:
             x = layer(x, encoder_output=encoder_output,
                       look_ahead_mask=look_ahead_mask,

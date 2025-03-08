@@ -86,7 +86,7 @@ def test_TransformerDecoder():
     )
     assert decoder_output.shape == torch.Size([batch_size, seq_len, embed_dim])
 
-def test_Transformer():
+def test_Transformer_forward():
     output = transformer(
         input_tokens=input_tokens, target_tokens=target_tokens,
         src_padding_mask=src_padding_mask,
