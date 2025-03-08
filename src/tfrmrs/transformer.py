@@ -6,19 +6,20 @@ from torch import device
 
 
 class Transformer(nn.Module):
-    def __init__(self, src_vocab_size: int, tgt_vocab_size, embed_dim, n_heads,
-                 num_encoder_layers, num_decoder_layers,
-                 dim_feedforward, max_len=5000, dropout=0.1):
+    def __init__(self, src_vocab_size: int, tgt_vocab_size: int, embed_dim: int, 
+                 num_heads: int, num_encoder_layers: int, num_decoder_layers: int,
+                 dim_feedforward: int, max_len: int = 5000, 
+                 dropout: float | None = 0.1):
         super().__init__()
 
         self.encoder = TransformerEncoder(
-            vocab_size=src_vocab_size, embed_dim=embed_dim, n_heads=n_heads,
+            vocab_size=src_vocab_size, embed_dim=embed_dim, num_heads=num_heads,
             num_layers=num_encoder_layers, dim_feedforward=dim_feedforward,
             max_len=max_len, dropout=dropout
         )
 
         self.decoder = TransformerDecoder(
-            tgt_vocab_size, embed_dim, n_heads, num_decoder_layers,
+            tgt_vocab_size, embed_dim, num_heads, num_decoder_layers,
             dim_feedforward, max_len, dropout
         )
 
@@ -41,8 +42,8 @@ class Transformer(nn.Module):
             padding_value=src_padding_token
         )
 
-
-        output = self.fc_out(decoder_output)  # Shape: (batch_size, tgt_seq_len, tgt_vocab_size)
+        #output shape: (batch_size, tgt_seq_len, tgt_vocab_size)
+        output = self.fc_out(decoder_output)  
 
         return output
 
@@ -226,11 +227,11 @@ class PositionalEncoding(nn.Module):
 
 
 class TransformerEncoderBlock(nn.Module):
-    def __init__(self, embed_dim: int, n_heads: int, dim_feedforward: int, 
-                 dropout: float = 0.1):
+    def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int, 
+                 dropout: float | None = 0.1):
         super().__init__()
 
-        self.self_attention = SelfAttention(embed_dim, n_heads)
+        self.self_attention = SelfAttention(embed_dim, num_heads)
 
         self.norm1 = nn.LayerNorm(embed_dim)
         self.norm2 = nn.LayerNorm(embed_dim)
@@ -240,65 +241,53 @@ class TransformerEncoderBlock(nn.Module):
             nn.ReLU(),
             nn.Linear(dim_feedforward, embed_dim)
         )
-
-        self.dropout = nn.Dropout(dropout)
+        
+        self.dropout = nn.Dropout(dropout) if dropout else None
 
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor | None = None,
                 padding_value: float = 0):
         attn_output, _ = self.self_attention(
             x, x, x, padding_mask, padding_value
         )
-        x = self.norm1(x + self.dropout(attn_output))
+        x += self.dropout(attn_output) if self.dropout else attn_output
+        x = self.norm1(x)
         ff_output = self.feed_forward(x)
-        x = self.norm2(x + self.dropout(ff_output))
+        x += self.dropout(ff_output) if self.dropout else ff_output
+        x = self.norm2(x)
         return x
 
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, vocab_size, embed_dim, n_heads, num_layers,
-                 dim_feedforward, max_len=5000, dropout=0.1):
+    def __init__(self, vocab_size: int, embed_dim: int, num_heads: int, 
+                 num_layers: int, dim_feedforward, max_len=5000, 
+                 dropout: float | None = 0.1):
         super().__init__()
 
-        # Embedding layer for input tokens
         self.embedding = nn.Embedding(vocab_size, embed_dim)
-
-        # Positional encoding layer
         self.positional_encoding = PositionalEncoding(embed_dim, max_len)
-
-        # Transformer encoder blocks (stack of layers)
         self.layers = nn.ModuleList(
             [
-                TransformerEncoderBlock(embed_dim, n_heads, dim_feedforward, dropout)
+                TransformerEncoderBlock(embed_dim, num_heads, dim_feedforward, dropout)
                 for _ in range(num_layers)
             ]
         )
-
-        # Dropout after embedding + positional encoding
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout) if dropout else None
 
     def forward(self, input_tokens, padding_mask=None, padding_value=0):
-        # Step 1: Embed the input tokens
         x = self.embedding(input_tokens)  # (batch_size, seq_len, embed_dim)
-
-        # Step 2: Add positional encoding
         x = self.positional_encoding(x)
-
-        # Step 3: Apply dropout
-        x = self.dropout(x)
-
-        # Step 4: Pass through the encoder layers
+        x = self.dropout(x) if self.dropout else x
         for layer in self.layers:
             x = layer(x, padding_mask=padding_mask, padding_value=padding_value)
-
         return x
 
 
 class TransformerDecoderBlock(nn.Module):
-    def __init__(self, embed_dim: int, n_heads: int, dim_feedforward: int,
-                 dropout: float = 0.1):
+    def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int,
+                 dropout: float | None = 0.1):
         super().__init__()
-        self.self_attention = SelfAttention(embed_dim, n_heads)
-        self.cross_attention = SelfAttention(embed_dim, n_heads)
+        self.self_attention = SelfAttention(embed_dim, num_heads)
+        self.cross_attention = SelfAttention(embed_dim, num_heads)
         self.feed_forward = nn.Sequential(
             nn.Linear(embed_dim, dim_feedforward),
             nn.ReLU(),
@@ -307,26 +296,29 @@ class TransformerDecoderBlock(nn.Module):
         self.norm1 = nn.LayerNorm(embed_dim)
         self.norm2 = nn.LayerNorm(embed_dim)
         self.norm3 = nn.LayerNorm(embed_dim)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout) if dropout else None
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor,
                 look_ahead_mask: torch. Tensor | None = None,
                 padding_mask: torch. Tensor | None =None,
                 padding_value: float = 0):
         attn_output, _ = self.self_attention(x, x, x, look_ahead_mask)
-        x = self.norm1(x + self.dropout(attn_output))
+        x += self.dropout(attn_output) if self.dropout else attn_output
+        x = self.norm1(x)
         cross_attn_output, _ = self.cross_attention(
             query=x, key=encoder_output, value=encoder_output,
             padding_mask=padding_mask, padding_value=padding_value
         )
-        x = self.norm2(x + self.dropout(cross_attn_output))
+        x += self.dropout(cross_attn_output) if self.dropout else cross_attn_output 
+        x = self.norm2(x)
         ff_output = self.feed_forward(x)
-        x = self.norm3(x + self.dropout(ff_output))
+        x += self.dropout(ff_output) if self.dropout else ff_output
+        x = self.norm3(x)
         return x
 
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, vocab_size: int, embed_dim: int, n_heads: int,
+    def __init__(self, vocab_size: int, embed_dim: int, num_heads: int,
                  num_layers: int, dim_feedforward: int, max_len: int = 5000,
                  dropout: float = 0.1):
         super().__init__()
@@ -335,7 +327,7 @@ class TransformerDecoder(nn.Module):
         self.positional_encoding = PositionalEncoding(embed_dim, max_len)
         self.layers = nn.ModuleList(
             [
-                TransformerDecoderBlock(embed_dim, n_heads, dim_feedforward, dropout)
+                TransformerDecoderBlock(embed_dim, num_heads, dim_feedforward, dropout)
                 for _ in range(num_layers)
             ]
         )
@@ -375,7 +367,7 @@ if __name__ == "__main__":
     src_vocab_size = 10000  # Source vocabulary size
     tgt_vocab_size = 10000  # Target vocabulary size
     embed_dim = 512            # Embedding size
-    n_heads = 8              # Number of attention heads
+    num_heads = 8              # Number of attention heads
     num_encoder_layers = 6   # Number of encoder layers
     num_decoder_layers = 6   # Number of decoder layers
     dim_feedforward = 2048    # Feedforward network size
@@ -389,14 +381,14 @@ if __name__ == "__main__":
 
     # Create padding masks (assuming no padding here; using all ones)
     # Create look-ahead mask for the target sequence
-    src_padding_mask = create_padding_mask(input_tokens
+    src_padding_mask = create_padding_mask(input_tokens)
     tgt_look_ahead_mask = create_look_ahead_mask(target_tokens.size(1))
 
     #--------------------------------------------------
     # Transfomer piece by piece
     #--------------------------------------------------
     encoder = TransformerEncoder(
-        vocab_size=src_vocab_size, embed_dim=embed_dim, n_heads=n_heads,
+        vocab_size=src_vocab_size, embed_dim=embed_dim, num_heads=num_heads,
         num_layers=num_encoder_layers, dim_feedforward=dim_feedforward,
         max_len=max_len
     )
@@ -407,7 +399,7 @@ if __name__ == "__main__":
 
     # decoder
     decoder = TransformerDecoder(
-        vocab_size=tgt_vocab_size, embed_dim=embed_dim, n_heads=n_heads,
+        vocab_size=tgt_vocab_size, embed_dim=embed_dim, num_heads=num_heads,
         num_layers=num_decoder_layers, dim_feedforward=dim_feedforward,
         max_len=max_len, dropout=dropout
     )
@@ -428,7 +420,7 @@ if __name__ == "__main__":
     #--------------------------------------------------
     # Transformer
     transformer = Transformer(
-        src_vocab_size, tgt_vocab_size, embed_dim, n_heads, num_encoder_layers,
+        src_vocab_size, tgt_vocab_size, embed_dim, num_heads, num_encoder_layers,
         num_decoder_layers, dim_feedforward, max_len, dropout
     )
 
