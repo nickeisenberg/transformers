@@ -48,7 +48,9 @@ class Transformer(nn.Module):
         return output
 
 
-    def inference(self, input_tokens, max_len, sos_token, eos_token, src_padding_mask=None):
+    def inference(self, input_tokens: torch.Tensor, max_len: int, 
+                  sos_token: float, eos_token: float, 
+                  src_padding_mask: torch.Tensor | None = None):
         """
         Inference method that generates the target sequence autoregressively.
 
