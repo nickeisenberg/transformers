@@ -10,7 +10,7 @@ def fake_batch_of_src_tokens(batch_size: int, seq_len: int, vocab_size: int,
         tokens = torch.zeros(seq_len) + padding_value
         tokens[:idx] = torch.randint(0, vocab_size, (int(idx),))
         batch.append(tokens)
-    return torch.vstack(batch)
+    return torch.vstack(batch).to(torch.long)
 
 
 def create_padding_mask(input_tokens, pad_token=0):

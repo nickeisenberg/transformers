@@ -14,7 +14,8 @@ from src.tfrmrs.transformer import (
 
 from src.tfrmrs.utils import (
     create_look_ahead_mask,
-    create_padding_mask
+    create_padding_mask,
+    fake_batch_of_src_tokens
 )
 
 if mps_avail():
@@ -24,6 +25,7 @@ elif cuda_avail():
 else:
     DEVICE = "cpu"
 
+padding_value = -1000
 batch_size = 4
 src_vocab_size = 10000
 tgt_vocab_size = 10000
@@ -36,9 +38,15 @@ dim_feedforward = 2048
 max_len = 500
 dropout = 0.1
 
-input_tokens = torch.randint(0, src_vocab_size, (batch_size, seq_len)).to(DEVICE)
-target_tokens = torch.randint(0, tgt_vocab_size, (batch_size, seq_len)).to(DEVICE)
-src_padding_mask = create_padding_mask(input_tokens)
+input_tokens = fake_batch_of_src_tokens(
+    batch_size, seq_len, src_vocab_size, padding_value
+).to(DEVICE)
+target_tokens = fake_batch_of_src_tokens(
+    batch_size, seq_len, tgt_vocab_size, padding_value
+).to(DEVICE)
+
+src_padding_mask = create_padding_mask(input_tokens, padding_value).to(DEVICE)
+tgt_padding_mask = create_padding_mask(target_tokens, padding_value).to(DEVICE)
 tgt_look_ahead_mask = create_look_ahead_mask(
     target_tokens.size(1), device=DEVICE
 )
@@ -77,21 +85,30 @@ def test_SelfAttention():
 
 def test_TransformerEncoder():
     encoder_output = encoder(
-        input_tokens=input_tokens, padding_mask=src_padding_mask
+        input_tokens=input_tokens, 
+        padding_mask=src_padding_mask
     )
     assert encoder_output.shape == torch.Size([batch_size, seq_len, embed_dim])
 
+
+test_TransformerEncoder()
+
+
 def test_TransformerDecoder():
     decoder_output = decoder(
-        target_tokens=target_tokens, encoder_output=encoder_output,
-        look_ahead_mask=tgt_look_ahead_mask, padding_mask=src_padding_mask,
+        target_tokens=target_tokens, 
+        encoder_output=encoder_output,
+        look_ahead_mask=tgt_look_ahead_mask, 
+        padding_mask=tgt_padding_mask,
     )
     assert decoder_output.shape == torch.Size([batch_size, seq_len, embed_dim])
 
 def test_Transformer_forward():
     output = transformer(
-        input_tokens=input_tokens, target_tokens=target_tokens,
+        input_tokens=input_tokens, 
+        target_tokens=target_tokens,
         src_padding_mask=src_padding_mask,
+        tgt_padding_mask=tgt_padding_mask,
         tgt_look_ahead_mask=tgt_look_ahead_mask
     )
     assert output.shape == torch.Size([batch_size, seq_len, tgt_vocab_size])
