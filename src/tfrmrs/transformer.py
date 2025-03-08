@@ -65,40 +65,36 @@ class Transformer(nn.Module):
 
         device = input_tokens.device
 
-        # Step 1: Encode the source sequence
         encoder_output = self.encoder(input_tokens=input_tokens,
                                       padding_mask=src_padding_mask)
 
-        # Step 2: Initialize the target sequence with the <SOS> token
         batch_size = input_tokens.size(0)
         tgt_tokens = torch.full(
             (batch_size, 1), sos_token, dtype=torch.long, device=input_tokens.device
-        )  # Start with <SOS> token
+        )
 
-        # Step 3: Iteratively generate tokens
+        # Iteratively generate tokens
         for _ in range(max_len):
-            # Step 4: Create look-ahead mask for the target sequence
             tgt_look_ahead_mask = create_look_ahead_mask(
                 tgt_tokens.size(1), device
             )
-
-            # Step 5: Decode using the current target sequence
             decoder_output = self.decoder(
                 target_tokens=tgt_tokens, encoder_output=encoder_output,
                 look_ahead_mask=tgt_look_ahead_mask
             )
 
-            # Step 6: Apply final linear layer to get predictions
-            logits = self.fc_out(decoder_output)  # (batch_size, tgt_seq_len, tgt_vocab_size)
+            # (batch_size, tgt_seq_len, tgt_vocab_size)
+            logits = self.fc_out(decoder_output)  
+            
+            # (batch_size, tgt_vocab_size)
+            next_token_logits = logits[:, -1, :]  
+            
+            # (batch_size, 1)
+            next_token = torch.argmax(next_token_logits, dim=-1).unsqueeze(1)
 
-            # Step 7: Get the last time step's logits and apply softmax to get probabilities
-            next_token_logits = logits[:, -1, :]  # (batch_size, tgt_vocab_size)
-            next_token = torch.argmax(next_token_logits, dim=-1).unsqueeze(1)  # (batch_size, 1)
+            # (batch_size, seq_len + 1)
+            tgt_tokens = torch.cat([tgt_tokens, next_token], dim=1)  
 
-            # Step 8: Append the predicted token to the target sequence
-            tgt_tokens = torch.cat([tgt_tokens, next_token], dim=1)  # (batch_size, seq_len + 1)
-
-            # Step 9: Check if all sequences have generated <EOS> token
             if torch.all(next_token == eos_token):
                 break
 
