@@ -76,6 +76,7 @@ transformer = Transformer(
 )
 _ = transformer.to(DEVICE)
 
+
 def test_SelfAttention():
     self_attention = SelfAttention(embed_dim=embed_dim, num_heads=num_heads).to(DEVICE)
     output, _ = self_attention(
@@ -83,15 +84,13 @@ def test_SelfAttention():
     )
     assert output.shape == torch.Size([batch_size, seq_len, embed_dim])
 
+
 def test_TransformerEncoder():
     encoder_output = encoder(
         input_tokens=input_tokens, 
         padding_mask=src_padding_mask
     )
     assert encoder_output.shape == torch.Size([batch_size, seq_len, embed_dim])
-
-
-test_TransformerEncoder()
 
 
 def test_TransformerDecoder():
@@ -102,6 +101,7 @@ def test_TransformerDecoder():
         padding_mask=tgt_padding_mask,
     )
     assert decoder_output.shape == torch.Size([batch_size, seq_len, embed_dim])
+
 
 def test_Transformer_forward():
     output = transformer(
