@@ -2,7 +2,11 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import device
+
+from src.tfrmrs.utils import(
+    create_look_ahead_mask,
+    create_padding_mask
+)
 
 
 class Transformer(nn.Module):
@@ -344,20 +348,6 @@ class TransformerDecoder(nn.Module):
                       look_ahead_mask=look_ahead_mask,
                       padding_mask=padding_mask, padding_value=padding_value)
         return x
-
-
-def create_padding_mask(input_tokens, pad_token=0):
-    """input_tokens: shape (batch_size, seq_len)"""
-    # mask.shape() = (batch_size, 1, 1, seq_len)
-    mask = (input_tokens != pad_token).unsqueeze(1).unsqueeze(2)
-    return mask
-
-
-def create_look_ahead_mask(seq_len: int, device: int | str | device = "cpu"):
-    """Create a mask where each position i can only attend to positions <= i"""
-    # mase.shape() = (1, 1, seq_len, seq_len)
-    mask = torch.tril(torch.ones((seq_len, seq_len))).unsqueeze(0).unsqueeze(0)
-    return mask.to(device)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,9 @@ from src.tfrmrs.transformer import (
     TransformerEncoder,
     TransformerDecoder,
     Transformer,
+)
+
+from src.tfrmrs.utils import (
     create_look_ahead_mask,
     create_padding_mask
 )
