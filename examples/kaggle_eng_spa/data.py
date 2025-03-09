@@ -1,8 +1,9 @@
-from typing import Any
-from numpy import ma
+from typing import Any, cast
 import pandas as pd
 from torch.utils.data import Dataset 
-from transformers import MarianTokenizer
+from transformers import MarianTokenizer, PreTrainedTokenizerBase
+
+
 
 def get_tokenizer():
     tokenizer = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-es")
@@ -19,7 +20,6 @@ class TranslationDataset(Dataset):
         max_length=64, 
         padding='do_not_pad', 
         truncation=True, 
-        return_tensors="pt"
         """
         self.df = pd.read_csv(path_to_eng_spa_df)
         self.tokenizer = tokenizer
@@ -38,11 +38,13 @@ class TranslationDataset(Dataset):
 
         src_encoded = self.tokenizer(
             src_text, 
+            return_tensors="pt",
             **self.src_tokenizer_kwargs
         )
         
         tgt_encoded = self.tokenizer(
             tgt_text,
+            return_tensors="pt",
             **self.tgt_tokenizer_kwargs
         )
         
@@ -52,3 +54,22 @@ class TranslationDataset(Dataset):
             "decoder_input_ids": tgt_encoded["input_ids"].squeeze()[:-1],
             "labels": tgt_encoded["input_ids"].squeeze()[1:]
         }
+
+
+if __name__ == "__main__":
+
+    tokenizer = cast(
+        PreTrainedTokenizerBase, 
+        MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-es")
+    )
+    batch = ["hello there. how are you doing", "I am nick"]
+    tokenized = tokenizer(
+        text=batch,
+        return_tensors="pt",
+        max_length=64, 
+        padding=True, 
+        truncation=True,
+    )
+    
+    tokenized["input_ids"]
+    tokenized["attention_mask"]
