@@ -27,7 +27,7 @@ def generate_even_data(sos_token, eos_token):
     return src, trg
 
 
-def create_batch(batch_size=32, sos_token=-5, eos_token=-1):
+def create_batch(batch_size: int=32, sos_token: int=-5, eos_token: int=-1):
     src_batch = []
     tgt_batch = []
     for _ in range(batch_size):

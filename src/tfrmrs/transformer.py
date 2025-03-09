@@ -383,7 +383,6 @@ def create_look_ahead_mask(seq_len, device: int | str | Device = "cpu"):
 
 
 if __name__ == "__main__":
-    # Define the parameters
     src_vocab_size = 10000  # Source vocabulary size
     tgt_vocab_size = 10000  # Target vocabulary size
     embed_dim = 512            # Embedding size
